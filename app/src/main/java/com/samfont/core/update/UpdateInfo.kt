@@ -17,6 +17,10 @@ sealed class UpdateState {
     data class UpToDate(val currentVersionName: String) : UpdateState()
     data class Available(val info: UpdateInfo) : UpdateState()
     data class Error(val message: String) : UpdateState()
-    data object Downloading : UpdateState()
+    data class Downloading(
+        val progress: Int,
+        val downloadedBytes: Long,
+        val totalBytes: Long?
+    ) : UpdateState()
     data object Installing : UpdateState()
 }

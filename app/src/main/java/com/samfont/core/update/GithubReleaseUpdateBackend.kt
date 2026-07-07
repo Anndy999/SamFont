@@ -70,15 +70,19 @@ object GithubReleaseUpdateBackend {
         val parts = cleaned.split('.', '-', '_').filter { it.isNotBlank() }
         if (parts.isEmpty()) return BuildConfig.VERSION_CODE + 1
 
-        return parts
-            .take(3)
-            .foldIndexed(0) { index, acc, part ->
-                val value = part.filter { it.isDigit() }.ifBlank { "0" }.toIntOrNull() ?: 0
-                when (index) {
-                    0 -> value * 1000
-                    1 -> acc + value * 10
-                    else -> acc + value
-                }
-            }.coerceAtLeast(BuildConfig.VERSION_CODE + 1)
+        var major = 0
+        var minor = 0
+        var patch = 0
+        parts.take(3).forEachIndexed { index, part ->
+            val value = part.filter { it.isDigit() }.ifBlank { "0" }.toIntOrNull() ?: 0
+            when (index) {
+                0 -> major = value
+                1 -> minor = value
+                2 -> patch = value
+            }
+        }
+
+        val computed = major * 10000 + minor * 100 + patch
+        return computed.coerceAtLeast(BuildConfig.VERSION_CODE + 1)
     }
 }

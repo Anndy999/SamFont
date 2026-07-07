@@ -85,33 +85,47 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openFont(font: FontFamilyModel) {
-        _uiState.update { current ->
-            current.copy(screen = Screen.Detail(font))
-        }
+        _uiState.update { current -> current.copy(screen = Screen.Detail(font)) }
     }
 
     fun goHome() {
-        _uiState.update { current ->
-            current.copy(screen = Screen.Home)
-        }
+        _uiState.update { current -> current.copy(screen = Screen.Home) }
     }
 
     fun installUpdate(context: Context) {
         val updateState = _uiState.value.updateState
         if (updateState !is UpdateState.Available) {
-            viewModelScope.launch {
-                emitMessage("没有可安装的更新包")
-            }
+            viewModelScope.launch { emitMessage("没有可安装的更新包") }
             return
         }
 
         viewModelScope.launch {
-            _uiState.update { current -> current.copy(updateState = UpdateState.Downloading) }
+            _uiState.update { current -> current.copy(updateState = UpdateState.Downloading(0, 0, null)) }
             runCatching {
-                val apkUri = UpdateInstaller.downloadApk(context.applicationContext, updateState.info)
+                val downloadResult = withContext(Dispatchers.IO) {
+                    UpdateInstaller.downloadApk(
+                        context = context.applicationContext,
+                        info = updateState.info
+                    ) { downloaded, total ->
+                        val progress = if (total != null && total > 0) {
+                            ((downloaded * 100) / total).toInt().coerceIn(0, 100)
+                        } else {
+                            0
+                        }
+                        _uiState.update { current ->
+                            current.copy(
+                                updateState = UpdateState.Downloading(
+                                    progress = progress,
+                                    downloadedBytes = downloaded,
+                                    totalBytes = total
+                                )
+                            )
+                        }
+                    }
+                }
+
                 _uiState.update { current -> current.copy(updateState = UpdateState.Installing) }
-                context.startActivity(UpdateInstaller.buildInstallIntent(context, apkUri))
-            }.onSuccess {
+                context.startActivity(UpdateInstaller.buildInstallIntent(downloadResult.uri))
                 emitMessage("已打开系统安装界面")
             }.onFailure { throwable ->
                 _uiState.update { current ->
@@ -159,7 +173,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
 
     @Suppress("UNUSED_PARAMETER")
     fun applySelectedFont(font: FontFamilyModel) {
-        // 这里只发出占位提示，不触碰系统字体接口，后续可以再替换为真实服务。
+        // 当前阶段只发出占位提示，不触碰系统级字体修改逻辑。
         viewModelScope.launch {
             emitMessage("系统字体应用服务尚未接入")
         }

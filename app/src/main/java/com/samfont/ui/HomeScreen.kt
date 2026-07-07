@@ -59,6 +59,7 @@ fun HomeScreen(
         item {
             UpdateCard(
                 updateState = uiState.updateState,
+                currentVersionName = uiState.currentVersionName,
                 onCheckUpdate = onCheckUpdate,
                 onInstallUpdate = onInstallUpdate
             )

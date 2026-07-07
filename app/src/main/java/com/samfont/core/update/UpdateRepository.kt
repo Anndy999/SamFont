@@ -1,6 +1,5 @@
 package com.samfont.core.update
 
-import android.content.Context
 import com.samfont.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

@@ -9,7 +9,16 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object UpdateInstaller {
-    fun downloadApk(context: Context, info: UpdateInfo): Uri {
+    data class DownloadResult(
+        val file: File,
+        val uri: Uri
+    )
+
+    fun downloadApk(
+        context: Context,
+        info: UpdateInfo,
+        onProgress: ((downloadedBytes: Long, totalBytes: Long?) -> Unit)? = null
+    ): DownloadResult {
         val updateDir = File(context.cacheDir, "updates")
         if (!updateDir.exists()) {
             updateDir.mkdirs()
@@ -25,18 +34,28 @@ object UpdateInstaller {
 
         connection.inputStream.use { input ->
             apkFile.outputStream().use { output ->
-                input.copyTo(output)
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var totalRead = 0L
+                val totalBytes = connection.contentLengthLong.takeIf { it > 0 }
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                    totalRead += read
+                    onProgress?.invoke(totalRead, totalBytes)
+                }
             }
         }
 
-        return FileProvider.getUriForFile(
+        val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             apkFile
         )
+        return DownloadResult(file = apkFile, uri = uri)
     }
 
-    fun buildInstallIntent(context: Context, apkUri: Uri): Intent {
+    fun buildInstallIntent(apkUri: Uri): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(apkUri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
