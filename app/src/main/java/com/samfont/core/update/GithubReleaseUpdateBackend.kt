@@ -68,7 +68,7 @@ object GithubReleaseUpdateBackend {
     private fun parseVersionCode(tagName: String): Int {
         val cleaned = normalizeVersionName(tagName)
         val parts = cleaned.split('.', '-', '_').filter { it.isNotBlank() }
-        if (parts.isEmpty()) return BuildConfig.VERSION_CODE + 1
+        if (parts.isEmpty()) return 0
 
         var major = 0
         var minor = 0
@@ -83,6 +83,6 @@ object GithubReleaseUpdateBackend {
         }
 
         val computed = major * 10000 + minor * 100 + patch
-        return computed.coerceAtLeast(BuildConfig.VERSION_CODE + 1)
+        return computed
     }
 }

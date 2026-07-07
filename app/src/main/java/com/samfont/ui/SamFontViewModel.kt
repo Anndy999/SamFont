@@ -2,6 +2,7 @@ package com.samfont.ui
 
 import android.app.Application
 import android.content.Context
+import android.graphics.Typeface
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
@@ -18,7 +19,6 @@ import com.samfont.core.update.UpdateRepository
 import com.samfont.core.update.UpdateState
 import java.io.File
 import java.io.IOException
-import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -185,26 +185,32 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
 
     private fun copyFontToPrivateDir(context: Context, uri: Uri) {
         val displayName = queryDisplayName(context, uri)
-            ?: throw IllegalArgumentException("无法识别字体文件名称")
+            ?: uri.lastPathSegment
+            ?: "imported-font"
 
-        if (!FontRepository.isSupportedFontFile(displayName)) {
-            throw IllegalArgumentException("仅支持 .ttf / .otf / .ttc 字体文件")
-        }
+        val resolver = context.contentResolver
+        val extension = FontRepository.findSupportedExtension(displayName)
+            ?: FontRepository.extensionFromMimeType(resolver.getType(uri))
+            ?: "ttf"
 
         val fontDir = File(context.filesDir, "fonts")
         if (!fontDir.exists() && !fontDir.mkdirs()) {
             throw IOException("无法创建字体目录")
         }
 
-        val extension = displayName.substringAfterLast('.', "")
-        val safeName = "${System.currentTimeMillis()}_${UUID.randomUUID()}.$extension"
-        val targetFile = File(fontDir, safeName)
+        val safeBaseName = sanitizeFontName(displayName.substringBeforeLast('.', displayName))
+        val targetFile = createUniqueFontFile(fontDir, "$safeBaseName.$extension")
 
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        resolver.openInputStream(uri)?.use { input ->
             targetFile.outputStream().use { output ->
                 input.copyTo(output)
             }
         } ?: throw IOException("无法读取选择的字体文件")
+
+        if (!canLoadTypeface(targetFile)) {
+            targetFile.delete()
+            throw IllegalArgumentException("字体文件加载失败，请确认是有效的 .ttf / .otf / .ttc 文件")
+        }
     }
 
     private fun queryDisplayName(context: Context, uri: Uri): String? {
@@ -217,5 +223,35 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                     null
                 }
             } ?: uri.lastPathSegment
+    }
+
+    private fun sanitizeFontName(name: String): String {
+        val cleaned = name
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .trim()
+            .take(80)
+
+        return cleaned.ifBlank { "imported-font" }
+    }
+
+    private fun createUniqueFontFile(directory: File, fileName: String): File {
+        val baseName = fileName.substringBeforeLast('.', "imported-font")
+        val extension = fileName.substringAfterLast('.', "ttf")
+        var candidate = File(directory, fileName)
+        var index = 1
+
+        while (candidate.exists()) {
+            candidate = File(directory, "${baseName}_$index.$extension")
+            index += 1
+        }
+
+        return candidate
+    }
+
+    private fun canLoadTypeface(file: File): Boolean {
+        return runCatching {
+            // 导入阶段先用 Android 字体引擎验证一次，避免把非字体文件误识别为字体。
+            Typeface.Builder(file).build()
+        }.isSuccess
     }
 }

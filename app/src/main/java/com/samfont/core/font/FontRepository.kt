@@ -1,6 +1,7 @@
 package com.samfont.core.font
 
 import android.content.Context
+import android.graphics.Typeface
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +27,7 @@ object FontRepository {
         return fontDir
             .listFiles()
             ?.asSequence()
-            ?.filter { it.isFile && isSupportedFontFile(it.name) }
+            ?.filter { it.isFile && isSupportedFontFile(it.name) && canLoadFont(it) }
             ?.sortedBy { it.name.lowercase() }
             ?.map { file ->
                 val displayName = file.nameWithoutExtension.ifBlank { file.name }
@@ -49,7 +50,30 @@ object FontRepository {
     }
 
     fun isSupportedFontFile(name: String): Boolean {
+        return findSupportedExtension(name) != null
+    }
+
+    fun findSupportedExtension(name: String?): String? {
+        if (name.isNullOrBlank()) {
+            return null
+        }
         val extension = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
-        return extension in supportedExtensions
+        return extension.takeIf { it in supportedExtensions }
+    }
+
+    fun extensionFromMimeType(mimeType: String?): String? {
+        return when (mimeType?.lowercase()) {
+            "font/ttf", "application/x-font-ttf", "application/font-sfnt" -> "ttf"
+            "font/otf", "application/x-font-otf" -> "otf"
+            "font/collection", "font/ttc" -> "ttc"
+            else -> null
+        }
+    }
+
+    private fun canLoadFont(file: File): Boolean {
+        return runCatching {
+            // 扫描本地库时做一次轻量校验，避免非字体文件混入列表。
+            Typeface.Builder(file).build()
+        }.isSuccess
     }
 }

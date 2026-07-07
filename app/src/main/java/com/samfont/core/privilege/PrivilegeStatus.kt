@@ -6,5 +6,8 @@ data class PrivilegeStatus(
     val isUid1000: Boolean,
     val canApplySystemFont: Boolean,
     val title: String,
-    val message: String
+    val message: String,
+    val processUid: Int = uid,
+    val effectiveUid: Int = uid,
+    val detectionSource: String = "Process.myUid()"
 )
