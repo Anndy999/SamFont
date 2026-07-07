@@ -1,5 +1,7 @@
 package com.samfont.core.privilege
 
+import com.samfont.core.shizuku.ShizukuStatus
+
 data class PrivilegeStatus(
     val uid: Int,
     val appId: Int,
@@ -16,6 +18,7 @@ data class PrivilegeStatus(
     val savedSetUid: Int? = null,
     val fileSystemUid: Int? = null,
     val selinuxContext: String? = null,
+    val shizukuStatus: ShizukuStatus? = null,
     val diagnostics: List<String> = emptyList(),
     val detectionSource: String = "Process.myUid()"
 )

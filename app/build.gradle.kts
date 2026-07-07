@@ -12,8 +12,8 @@ android {
         applicationId = "com.samfont"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10007
-        versionName = "1.0.7"
+        versionCode = 10100
+        versionName = "1.1.0"
     }
 
     flavorDimensions += "installMode"
@@ -30,6 +30,7 @@ android {
     }
 
     buildFeatures {
+        aidl = true
         compose = true
         buildConfig = true
     }
@@ -63,6 +64,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

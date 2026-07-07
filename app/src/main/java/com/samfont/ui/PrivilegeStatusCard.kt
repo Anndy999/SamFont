@@ -84,6 +84,16 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
+            Text(
+                text = "Shizuku: ${status.shizukuStatus?.uid ?: "未知"} / ${status.shizukuStatus?.source ?: "不可用"}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = "Shizuku 权限: ${status.shizukuStatus?.message ?: "不可用"}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
             if (!status.canApplySystemFont && status.installMode == "normal") {
                 Text(
                     text = "诊断: normal APK 不声明 android.uid.system，不能获得 UID1000。",

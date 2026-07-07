@@ -7,11 +7,13 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.samfont.BuildConfig
+import com.samfont.core.apply.FontApplyDryRun
 import com.samfont.core.apply.StubFontApplyBackend
 import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import com.samfont.core.privilege.PrivilegeChecker
 import com.samfont.core.privilege.PrivilegeStatus
+import com.samfont.core.shizuku.ShizukuBridge
 import com.samfont.core.update.GithubReleaseUpdateBackend
 import com.samfont.core.update.UpdateInstaller
 import com.samfont.core.update.UpdateRepository
@@ -80,6 +82,15 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { current ->
             current.copy(privilegeStatus = PrivilegeChecker.check(context))
         }
+    }
+
+    fun requestShizukuPermission() {
+        runCatching {
+            ShizukuBridge.requestPermission()
+        }.onFailure {
+            viewModelScope.launch { emitMessage(it.message ?: "Shizuku 权限请求失败") }
+        }
+        refreshPrivilege()
     }
 
     fun checkForUpdates() {
@@ -184,12 +195,15 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             val context = getApplication<Application>().applicationContext
             val status = PrivilegeChecker.check(context)
             _uiState.update { current -> current.copy(privilegeStatus = status) }
+            val dryRun = FontApplyDryRun.run(context, font, status)
 
             // 当前阶段不再用 UID1000 阻断按钮，用于验证交互链路。
             // Stub 后端不会触碰系统字体文件、不执行提权、不写系统分区。
             val applied = backend.apply(font)
             if (applied) {
                 emitMessage("字体应用完成")
+            } else if (!dryRun.canProceedToRootDryRun) {
+                emitMessage("Dry-run 未通过：${dryRun.checks.firstOrNull { it.endsWith("false") } ?: "后端未接入"}")
             } else if (status.canApplySystemFont) {
                 emitMessage("已检测到 UID1000，但系统字体应用后端仍是 Stub")
             } else {

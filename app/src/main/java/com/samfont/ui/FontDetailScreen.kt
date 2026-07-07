@@ -2,6 +2,7 @@ package com.samfont.ui
 
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +40,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.samfont.BuildConfig
 import com.samfont.core.font.FontFamilyModel
+import com.samfont.core.font.variation.FontVariationAxis
 import com.samfont.core.preview.FontPreviewEngine
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -56,11 +60,31 @@ fun FontDetailScreen(
     }
 
     val previewFile = font.files.firstOrNull()
+    val visibleAxes = remember(font.variationInfo) {
+        font.variationInfo
+            ?.axes
+            ?.filter { !it.hidden || BuildConfig.DEBUG }
+            .orEmpty()
+    }
+    var axisValues by remember(font.id) {
+        mutableStateOf(visibleAxes.associate { it.tag to it.defaultValue })
+    }
+    val previewVariationSettings = if (visibleAxes.isEmpty()) {
+        mapOf("wght" to selectedWeight.toFloat())
+    } else {
+        axisValues
+    }
     val previewFileExists = remember(previewFile?.path) {
         previewFile?.path?.let { File(it).exists() } ?: false
     }
-    val typeface = remember(previewFile?.path, selectedWeight) {
-        previewFile?.let { FontPreviewEngine.loadTypeface(it, selectedWeight) }
+    val typeface = remember(previewFile?.path, selectedWeight, previewVariationSettings) {
+        previewFile?.let {
+            FontPreviewEngine.loadTypeface(
+                fontFile = it,
+                weight = selectedWeight,
+                variationSettings = previewVariationSettings
+            )
+        }
     }
     val previewFontFamily = remember(typeface) {
         typeface?.let { FontFamily(it) } ?: FontFamily.Default
@@ -164,6 +188,49 @@ fun FontDetailScreen(
                         textAlign = TextAlign.End
                     )
                 }
+
+                if (visibleAxes.isNotEmpty()) {
+                    AxisControls(
+                        axes = visibleAxes,
+                        axisValues = axisValues,
+                        onAxisValueChange = { tag, value ->
+                            axisValues = axisValues + (tag to value)
+                            if (tag == "wght") {
+                                selectedWeight = value.toInt().coerceIn(100, 900)
+                            }
+                        },
+                        onReset = {
+                            axisValues = visibleAxes.associate { it.tag to it.defaultValue }
+                            axisValues["wght"]?.let { selectedWeight = it.toInt().coerceIn(100, 900) }
+                        }
+                    )
+
+                    val instances = font.variationInfo?.namedInstances.orEmpty()
+                    if (instances.isNotEmpty()) {
+                        Text(
+                            text = "Named Instances",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            instances.forEach { instance ->
+                                OutlinedButton(
+                                    onClick = {
+                                        axisValues = axisValues + instance.coordinates
+                                        instance.coordinates["wght"]?.let {
+                                            selectedWeight = it.toInt().coerceIn(100, 900)
+                                        }
+                                    }
+                                ) {
+                                    Text(text = instance.name ?: "Instance ${instance.nameId}")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -227,6 +294,49 @@ fun FontDetailScreen(
             }
         }
 
+        font.compatibilityReport?.let { report ->
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "字体兼容报告",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "类型: ${report.fileType.uppercase()} / TTC: ${yesNo(report.isTtc)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "可变字体: ${yesNo(report.isVariableFont)} / 轴: ${report.axes.size} / Instances: ${report.namedInstances.size}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Android 预览: ${yesNo(report.androidPreviewAvailable)} / CJK: ${yesNo(report.hasCjkCoverage)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "简体: ${yesNo(report.hasSimplifiedChineseCoverage)} / 繁体: ${yesNo(report.hasTraditionalChineseCoverage)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "可能适合作为系统字体: ${yesNo(report.suitableForSystemFont)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(4.dp))
 
         Button(
@@ -237,6 +347,78 @@ fun FontDetailScreen(
         }
     }
 }
+
+@Composable
+private fun AxisControls(
+    axes: List<FontVariationAxis>,
+    axisValues: Map<String, Float>,
+    onAxisValueChange: (String, Float) -> Unit,
+    onReset: () -> Unit
+) {
+    val standardAxes = axes.filter { it.standard }
+    val customAxes = axes.filterNot { it.standard }
+
+    Text(
+        text = "标准轴",
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    standardAxes.forEach { axis ->
+        AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
+    }
+
+    if (customAxes.isNotEmpty()) {
+        Text(
+            text = "高级轴",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        customAxes.forEach { axis ->
+            AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
+        }
+    }
+
+    OutlinedButton(onClick = onReset) {
+        Text(text = "恢复默认值")
+    }
+}
+
+@Composable
+private fun AxisSlider(
+    axis: FontVariationAxis,
+    value: Float,
+    onAxisValueChange: (String, Float) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "${axis.tag} ${axis.name ?: ""}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = trimAxisValue(value),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Slider(
+            value = value.coerceIn(axis.minValue, axis.maxValue),
+            onValueChange = { onAxisValueChange(axis.tag, it.coerceIn(axis.minValue, axis.maxValue)) },
+            valueRange = axis.minValue..axis.maxValue
+        )
+    }
+}
+
+private fun trimAxisValue(value: Float): String {
+    val intValue = value.toInt()
+    return if (value == intValue.toFloat()) intValue.toString() else "%.2f".format(value)
+}
+
+private fun yesNo(value: Boolean): String = if (value) "是" else "否"
 
 private fun weightLabel(weight: Int): String {
     return when (weight) {

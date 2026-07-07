@@ -26,6 +26,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     uiState: SamFontUiState,
     onImportFonts: () -> Unit,
+    onRequestShizukuPermission: () -> Unit,
     onCheckUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
     onOpenFont: (FontFamilyModel) -> Unit
@@ -54,6 +55,15 @@ fun HomeScreen(
 
         item {
             PrivilegeStatusCard(status = uiState.privilegeStatus)
+        }
+
+        item {
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onRequestShizukuPermission
+            ) {
+                Text(text = "请求 Shizuku 权限")
+            }
         }
 
         item {

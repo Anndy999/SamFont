@@ -5,6 +5,7 @@ import android.os.Process
 import android.os.UserHandle
 import android.system.Os
 import com.samfont.BuildConfig
+import com.samfont.core.shizuku.ShizukuBridge
 import java.io.File
 
 object PrivilegeChecker {
@@ -28,6 +29,7 @@ object PrivilegeChecker {
         }
         val procStatus = readProcStatusUids(diagnostics)
         val selinuxContext = readSelinuxContext(diagnostics)
+        val shizukuStatus = ShizukuBridge.check()
 
         // Android 多用户环境下，UID 由 userId 和 appId 组合而成。
         // 判断 UID1000 时既比较原始 uid，也比较 UserHandle.getAppId(uid) 的结果。
@@ -48,6 +50,7 @@ object PrivilegeChecker {
             diagnostics += "${candidate.source}: uid=${candidate.uid}, appId=${getAppIdCompat(candidate.uid)}"
         }
         selinuxContext?.let { diagnostics += "SELinux: $it" }
+        diagnostics += "Shizuku: uid=${shizukuStatus.uid ?: "未知"}, source=${shizukuStatus.source}"
 
         val matched = candidates.firstOrNull { isSystemUidCandidate(it.uid) }
         val selected = matched ?: candidates.first()
@@ -71,6 +74,7 @@ object PrivilegeChecker {
                 savedSetUid = procStatus?.savedSetUid,
                 fileSystemUid = procStatus?.fileSystemUid,
                 selinuxContext = selinuxContext,
+                shizukuStatus = shizukuStatus,
                 diagnostics = diagnostics,
                 detectionSource = selected.source
             )
@@ -91,6 +95,7 @@ object PrivilegeChecker {
                 savedSetUid = procStatus?.savedSetUid,
                 fileSystemUid = procStatus?.fileSystemUid,
                 selinuxContext = selinuxContext,
+                shizukuStatus = shizukuStatus,
                 diagnostics = diagnostics,
                 detectionSource = selected.source
             )

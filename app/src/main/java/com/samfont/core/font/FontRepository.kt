@@ -2,6 +2,9 @@ package com.samfont.core.font
 
 import android.content.Context
 import android.graphics.Typeface
+import com.samfont.core.font.variation.FontCompatibilityReport
+import com.samfont.core.font.variation.OpenTypeCoverageParser
+import com.samfont.core.font.variation.OpenTypeVariationParser
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +34,9 @@ object FontRepository {
             ?.sortedBy { it.name.lowercase() }
             ?.map { file ->
                 val displayName = file.nameWithoutExtension.ifBlank { file.name }
+                val variationInfo = OpenTypeVariationParser.parse(file)
+                val previewAvailable = canPreviewFont(file)
+                val report = buildCompatibilityReport(file, variationInfo, previewAvailable)
                 FontFamilyModel(
                     id = "${displayName}_${file.absolutePath.hashCode()}",
                     displayName = displayName,
@@ -39,11 +45,13 @@ object FontRepository {
                             path = file.absolutePath,
                             weight = 400,
                             italic = false,
-                            previewAvailable = canPreviewFont(file)
+                            previewAvailable = previewAvailable
                         )
                     ),
                     supportedWeights = defaultWeights,
-                    isVariableFont = false
+                    isVariableFont = variationInfo?.isVariable == true,
+                    variationInfo = variationInfo,
+                    compatibilityReport = report
                 )
             }
             ?.toList()
@@ -151,4 +159,31 @@ object FontRepository {
     private fun ByteArray.toAsciiString(): String {
         return String(this, Charsets.US_ASCII)
     }
+
+    private fun buildCompatibilityReport(
+        file: File,
+        variationInfo: com.samfont.core.font.variation.FontVariationInfo?,
+        previewAvailable: Boolean
+    ): FontCompatibilityReport {
+        val fileType = detectFontExtension(file) ?: findSupportedExtension(file.name) ?: "unknown"
+        val cjk = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '字'.code, '月'.code))
+        val simplified = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '简'.code, '体'.code))
+        val traditional = OpenTypeCoverageParser.hasCodePoints(file, listOf('漢'.code, '繁'.code, '體'.code))
+        val axes = variationInfo?.axes.orEmpty()
+        val instances = variationInfo?.namedInstances.orEmpty()
+
+        return FontCompatibilityReport(
+            fileType = fileType,
+            isVariableFont = variationInfo?.isVariable == true,
+            axes = axes,
+            namedInstances = instances,
+            androidPreviewAvailable = previewAvailable,
+            hasCjkCoverage = cjk,
+            hasSimplifiedChineseCoverage = simplified,
+            hasTraditionalChineseCoverage = traditional,
+            isTtc = fileType == "ttc",
+            suitableForSystemFont = previewAvailable && cjk
+        )
+    }
+
 }
