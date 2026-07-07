@@ -1,6 +1,5 @@
 package com.samfont.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,9 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +37,6 @@ import java.io.File
 fun FontDetailScreen(
     modifier: Modifier = Modifier,
     font: FontFamilyModel,
-    canApplySystemFont: Boolean,
     onBack: () -> Unit,
     onApply: () -> Unit
 ) {
@@ -91,19 +89,29 @@ fun FontDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "字重预览",
+                    text = "字重预览：$selectedWeight",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                Slider(
+                    value = selectedWeight.toFloat(),
+                    onValueChange = { value ->
+                        selectedWeight = value
+                            .toInt()
+                            .coerceIn(100, 900)
+                    },
+                    valueRange = 100f..900f,
+                    steps = 7
+                )
                 Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    font.supportedWeights.forEach { weight ->
-                        FilterChip(
-                            selected = selectedWeight == weight,
-                            onClick = { selectedWeight = weight },
-                            label = { Text(text = weight.toString()) }
+                    listOf(100, 300, 500, 700, 900).forEach { weight ->
+                        Text(
+                            text = weight.toString(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -174,10 +182,9 @@ fun FontDetailScreen(
 
         Button(
             modifier = Modifier.fillMaxWidth(),
-            enabled = canApplySystemFont,
             onClick = onApply
         ) {
-            Text(text = if (canApplySystemFont) "应用字体" else "需要 UID1000 权限")
+            Text(text = "尝试应用字体")
         }
     }
 }

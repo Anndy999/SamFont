@@ -185,17 +185,15 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             val status = PrivilegeChecker.check(context)
             _uiState.update { current -> current.copy(privilegeStatus = status) }
 
-            if (!status.canApplySystemFont) {
-                emitMessage("未检测到 UID1000 权限，已阻止应用字体")
-                return@launch
-            }
-
-            // 当前阶段调用 Stub 后端，不触碰系统字体文件、不执行提权、不写系统分区。
+            // 当前阶段不再用 UID1000 阻断按钮，用于验证交互链路。
+            // Stub 后端不会触碰系统字体文件、不执行提权、不写系统分区。
             val applied = backend.apply(font)
             if (applied) {
                 emitMessage("字体应用完成")
+            } else if (status.canApplySystemFont) {
+                emitMessage("已检测到 UID1000，但系统字体应用后端仍是 Stub")
             } else {
-                emitMessage("系统字体应用服务尚未接入")
+                emitMessage("已尝试应用；当前未接入非 UID1000 字体应用后端")
             }
         }
     }
