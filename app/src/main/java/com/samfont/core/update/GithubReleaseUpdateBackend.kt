@@ -49,15 +49,24 @@ object GithubReleaseUpdateBackend {
 
     private fun extractApkUrl(assets: JSONArray?): String? {
         if (assets == null) return null
+        var fallbackUrl: String? = null
+
         for (index in 0 until assets.length()) {
             val asset = assets.optJSONObject(index) ?: continue
             val name = asset.optString("name")
             val url = asset.optString("browser_download_url")
             if (name.endsWith(".apk", ignoreCase = true) && url.isNotBlank()) {
-                return url
+                if (name.contains("normal", ignoreCase = true)) {
+                    return url
+                }
+                if (!name.contains("system", ignoreCase = true) && fallbackUrl == null) {
+                    fallbackUrl = url
+                } else if (fallbackUrl == null) {
+                    fallbackUrl = url
+                }
             }
         }
-        return null
+        return fallbackUrl
     }
 
     private fun normalizeVersionName(tagName: String): String {

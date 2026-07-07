@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:sharedUserId="android.uid.system"
+    tools:ignore="Deprecated">
+
+    <!--
+        sharedUserId 已废弃。Android 15+ 上，平台签名但非 system App 的场景，
+        可能还需要在 /etc/sysconfig 中配置 shared UID allowlist。
+        这里只声明合法系统安装/平台签名场景，不包含任何提权或绕过逻辑。
+    -->
+
+</manifest>
