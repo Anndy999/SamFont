@@ -1,5 +1,8 @@
 package com.samfont.ui
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,16 +17,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.preview.FontPreviewEngine
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import java.io.File
 
 @Composable
@@ -85,35 +96,73 @@ fun FontDetailScreen(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = "字重预览：$selectedWeight",
-                    style = MaterialTheme.typography.titleMedium,
+                    text = "Variable Font",
+                    style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Slider(
-                    value = selectedWeight.toFloat(),
-                    onValueChange = { value ->
-                        selectedWeight = value
-                            .toInt()
-                            .coerceIn(100, 900)
-                    },
-                    valueRange = 100f..900f,
-                    steps = 7
+                Text(
+                    text = font.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                        text = "The quick brown fox",
+                        style = TextStyle(
+                            fontFamily = previewFontFamily,
+                            fontSize = 24.sp,
+                            lineHeight = 32.sp,
+                            fontWeight = FontWeight(selectedWeight)
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                WeightSlider(
+                    weight = selectedWeight,
+                    onWeightChange = { selectedWeight = it }
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    listOf(100, 300, 500, 700, 900).forEach { weight ->
-                        Text(
-                            text = weight.toString(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "100",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "900",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "当前字重",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "$selectedWeight · ${weightLabel(selectedWeight)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.End
+                    )
                 }
             }
         }
@@ -187,4 +236,108 @@ fun FontDetailScreen(
             Text(text = "尝试应用字体")
         }
     }
+}
+
+private fun weightLabel(weight: Int): String {
+    return when (weight) {
+        in 100..149 -> "Thin"
+        in 150..249 -> "Extra Light"
+        in 250..349 -> "Light"
+        in 350..449 -> "Regular"
+        in 450..549 -> "Medium"
+        in 550..649 -> "Semi Bold"
+        in 650..749 -> "Bold"
+        in 750..849 -> "Extra Bold"
+        else -> "Black"
+    }
+}
+
+@Composable
+private fun WeightSlider(
+    weight: Int,
+    onWeightChange: (Int) -> Unit
+) {
+    var widthPx by remember { mutableStateOf(0) }
+    val activeColor = Color(0xFF0B84E5)
+    val inactiveColor = MaterialTheme.colorScheme.outlineVariant
+    val tickColor = MaterialTheme.colorScheme.primary
+    val thumbFill = MaterialTheme.colorScheme.surface
+
+    fun weightFromX(x: Float): Int {
+        if (widthPx <= 0) {
+            return weight
+        }
+
+        val min = 100
+        val max = 900
+        val clamped = x.coerceIn(0f, widthPx.toFloat())
+        val raw = min + ((clamped / widthPx.toFloat()) * (max - min))
+        return ((raw / 100f).toInt() * 100).coerceIn(min, max)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .onSizeChanged { widthPx = it.width }
+            .pointerInput(widthPx) {
+                detectTapGestures { offset ->
+                    onWeightChange(weightFromX(offset.x))
+                }
+            }
+            .pointerInput(widthPx) {
+                detectDragGestures(
+                    onDragStart = { offset -> onWeightChange(weightFromX(offset.x)) },
+                    onDrag = { change, _ -> onWeightChange(weightFromX(change.position.x)) }
+                )
+            }
+            .drawBehind {
+                val trackHeight = 6.dp.toPx()
+                val thumbRadius = 15.dp.toPx()
+                val usableStart = thumbRadius
+                val usableEnd = size.width - thumbRadius
+                val usableWidth = usableEnd - usableStart
+                val progress = ((weight - 100).toFloat() / 800f).coerceIn(0f, 1f)
+                val thumbX = usableStart + usableWidth * progress
+                val trackY = size.height / 2f
+
+                drawRoundRect(
+                    color = inactiveColor,
+                    topLeft = Offset(usableStart, trackY - trackHeight / 2f),
+                    size = Size(usableWidth, trackHeight),
+                    cornerRadius = CornerRadius(trackHeight, trackHeight)
+                )
+                drawRoundRect(
+                    color = activeColor,
+                    topLeft = Offset(usableStart, trackY - trackHeight / 2f),
+                    size = Size(thumbX - usableStart, trackHeight),
+                    cornerRadius = CornerRadius(trackHeight, trackHeight)
+                )
+
+                for (index in 0..8) {
+                    val tickX = usableStart + usableWidth * (index / 8f)
+                    drawCircle(
+                        color = tickColor,
+                        radius = 3.2.dp.toPx(),
+                        center = Offset(tickX, trackY)
+                    )
+                }
+
+                drawCircle(
+                    color = Color(0x22000000),
+                    radius = thumbRadius + 1.dp.toPx(),
+                    center = Offset(thumbX, trackY + 1.dp.toPx())
+                )
+                drawCircle(
+                    color = thumbFill,
+                    radius = thumbRadius,
+                    center = Offset(thumbX, trackY)
+                )
+                drawCircle(
+                    color = activeColor,
+                    radius = 5.dp.toPx(),
+                    center = Offset(thumbX, trackY)
+                )
+            }
+    )
 }
