@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Process
 import android.os.UserHandle
 import android.system.Os
+import com.samfont.BuildConfig
 import java.io.File
 
 object PrivilegeChecker {
@@ -61,6 +62,7 @@ object PrivilegeChecker {
                 canApplySystemFont = true,
                 title = "UID1000 权限已启用",
                 message = "当前环境支持系统字体应用",
+                installMode = BuildConfig.INSTALL_MODE,
                 processUid = processUid,
                 osUid = osUid,
                 effectiveUid = effectiveUid,
@@ -80,6 +82,7 @@ object PrivilegeChecker {
                 canApplySystemFont = false,
                 title = "需要 UID1000 权限",
                 message = "当前环境仅支持字体预览，无法应用系统字体",
+                installMode = BuildConfig.INSTALL_MODE,
                 processUid = processUid,
                 osUid = osUid,
                 effectiveUid = effectiveUid,

@@ -60,6 +60,11 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
+                text = "安装模式: ${status.installMode}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
                 text = "Package UID: ${status.packageUid ?: "未知"} / 来源: ${status.detectionSource}",
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
@@ -79,6 +84,13 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
+            if (!status.canApplySystemFont && status.installMode == "normal") {
+                Text(
+                    text = "诊断: normal APK 不声明 android.uid.system，不能获得 UID1000。",
+                    color = contentColor,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }

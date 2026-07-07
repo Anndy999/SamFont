@@ -12,8 +12,8 @@ android {
         applicationId = "com.samfont"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10004
-        versionName = "1.0.4"
+        versionCode = 10005
+        versionName = "1.0.5"
     }
 
     flavorDimensions += "installMode"
@@ -21,9 +21,11 @@ android {
     productFlavors {
         create("normal") {
             dimension = "installMode"
+            buildConfigField("String", "INSTALL_MODE", "\"normal\"")
         }
         create("system") {
             dimension = "installMode"
+            buildConfigField("String", "INSTALL_MODE", "\"system\"")
         }
     }
 

@@ -7,6 +7,7 @@ data class PrivilegeStatus(
     val canApplySystemFont: Boolean,
     val title: String,
     val message: String,
+    val installMode: String = "unknown",
     val processUid: Int = uid,
     val osUid: Int = uid,
     val effectiveUid: Int = uid,
