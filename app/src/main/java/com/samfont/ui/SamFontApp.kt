@@ -10,17 +10,22 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -37,6 +42,19 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
                     duration = SnackbarDuration.Short
                 )
             }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPrivilege()
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -58,8 +76,16 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
                             arrayOf(
                                 "font/ttf",
                                 "font/otf",
+                                "font/ttc",
+                                "font/sfnt",
+                                "font/collection",
+                                "application/font-sfnt",
                                 "application/x-font-ttf",
+                                "application/x-font-truetype",
                                 "application/x-font-otf",
+                                "application/x-font-opentype",
+                                "application/x-font-ttc",
+                                "application/vnd.ms-opentype",
                                 "application/octet-stream",
                                 "*/*"
                             )

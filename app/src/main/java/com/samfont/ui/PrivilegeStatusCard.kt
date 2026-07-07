@@ -59,13 +59,26 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
-            if (status.processUid != status.effectiveUid || status.detectionSource != "Process.myUid()") {
-                Text(
-                    text = "Process UID: ${status.processUid} / Effective UID: ${status.effectiveUid}",
-                    color = contentColor,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            Text(
+                text = "Package UID: ${status.packageUid ?: "未知"} / 来源: ${status.detectionSource}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = "Process: ${status.processUid} / OS: ${status.osUid} / EUID: ${status.effectiveUid}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = "Real: ${status.realUid ?: "未知"} / Saved: ${status.savedSetUid ?: "未知"} / FS: ${status.fileSystemUid ?: "未知"}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = "SELinux: ${status.selinuxContext ?: "未知"}",
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

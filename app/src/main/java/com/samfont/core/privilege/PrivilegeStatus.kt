@@ -8,6 +8,13 @@ data class PrivilegeStatus(
     val title: String,
     val message: String,
     val processUid: Int = uid,
+    val osUid: Int = uid,
     val effectiveUid: Int = uid,
+    val packageUid: Int? = null,
+    val realUid: Int? = null,
+    val savedSetUid: Int? = null,
+    val fileSystemUid: Int? = null,
+    val selinuxContext: String? = null,
+    val diagnostics: List<String> = emptyList(),
     val detectionSource: String = "Process.myUid()"
 )

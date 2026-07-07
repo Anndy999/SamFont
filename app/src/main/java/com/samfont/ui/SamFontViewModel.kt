@@ -2,7 +2,6 @@ package com.samfont.ui
 
 import android.app.Application
 import android.content.Context
-import android.graphics.Typeface
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
@@ -51,7 +50,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
     private val backend = StubFontApplyBackend()
     private val _uiState = MutableStateFlow(
         SamFontUiState(
-            privilegeStatus = PrivilegeChecker.check(),
+            privilegeStatus = PrivilegeChecker.check(application.applicationContext),
             currentFontName = backend.getCurrentFont(),
             fonts = emptyList(),
             screen = Screen.Home,
@@ -73,6 +72,13 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         FontRepository.reload(getApplication<Application>().applicationContext)
         _uiState.update { current ->
             current.copy(fonts = FontRepository.fontFamilies.value)
+        }
+    }
+
+    fun refreshPrivilege() {
+        val context = getApplication<Application>().applicationContext
+        _uiState.update { current ->
+            current.copy(privilegeStatus = PrivilegeChecker.check(context))
         }
     }
 
@@ -157,6 +163,8 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 FontRepository.reload(context.applicationContext)
+                val fonts = FontRepository.fontFamilies.value
+                _uiState.update { current -> current.copy(fonts = fonts) }
                 importedCount to errors
             }
 
@@ -171,11 +179,24 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
     fun applySelectedFont(font: FontFamilyModel) {
-        // 当前阶段只发出占位提示，不触碰系统级字体修改逻辑。
         viewModelScope.launch {
-            emitMessage("系统字体应用服务尚未接入")
+            val context = getApplication<Application>().applicationContext
+            val status = PrivilegeChecker.check(context)
+            _uiState.update { current -> current.copy(privilegeStatus = status) }
+
+            if (!status.canApplySystemFont) {
+                emitMessage("未检测到 UID1000 权限，已阻止应用字体")
+                return@launch
+            }
+
+            // 当前阶段调用 Stub 后端，不触碰系统字体文件、不执行提权、不写系统分区。
+            val applied = backend.apply(font)
+            if (applied) {
+                emitMessage("字体应用完成")
+            } else {
+                emitMessage("系统字体应用服务尚未接入")
+            }
         }
     }
 
@@ -199,7 +220,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val safeBaseName = sanitizeFontName(displayName.substringBeforeLast('.', displayName))
-        val targetFile = createUniqueFontFile(fontDir, "$safeBaseName.$extension")
+        var targetFile = createUniqueFontFile(fontDir, "$safeBaseName.$extension")
 
         resolver.openInputStream(uri)?.use { input ->
             targetFile.outputStream().use { output ->
@@ -207,9 +228,16 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             }
         } ?: throw IOException("无法读取选择的字体文件")
 
-        if (!canLoadTypeface(targetFile)) {
+        targetFile = FontRepository.normalizeDetectedExtension(targetFile)
+
+        if (!FontRepository.isValidFontFile(targetFile)) {
             targetFile.delete()
-            throw IllegalArgumentException("字体文件加载失败，请确认是有效的 .ttf / .otf / .ttc 文件")
+            throw IllegalArgumentException("无效字体文件：文件头不是 TTF / OTF / TTC")
+        }
+
+        if (!FontRepository.canPreviewFont(targetFile)) {
+            // 有些有效字体 Android 预览引擎无法加载。文件仍保留在字体库中，详情页会显示回退提示。
+            return
         }
     }
 
@@ -248,10 +276,4 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         return candidate
     }
 
-    private fun canLoadTypeface(file: File): Boolean {
-        return runCatching {
-            // 导入阶段先用 Android 字体引擎验证一次，避免把非字体文件误识别为字体。
-            Typeface.Builder(file).build()
-        }.isSuccess
-    }
 }

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.preview.FontPreviewEngine
 import androidx.compose.ui.text.TextStyle
+import java.io.File
 
 @Composable
 fun FontDetailScreen(
@@ -46,6 +47,9 @@ fun FontDetailScreen(
     }
 
     val previewFile = font.files.firstOrNull()
+    val previewFileExists = remember(previewFile?.path) {
+        previewFile?.path?.let { File(it).exists() } ?: false
+    }
     val typeface = remember(previewFile?.path, selectedWeight) {
         previewFile?.let { FontPreviewEngine.loadTypeface(it, selectedWeight) }
     }
@@ -123,6 +127,18 @@ fun FontDetailScreen(
                 if (previewFile == null) {
                     Text(
                         text = "字体文件不存在，已回退系统字体",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (!previewFileExists) {
+                    Text(
+                        text = "字体文件不存在，已回退系统字体",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (typeface == null) {
+                    Text(
+                        text = "Android 预览引擎无法加载该字体，当前预览已回退系统字体；文件仍保留在字体库。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

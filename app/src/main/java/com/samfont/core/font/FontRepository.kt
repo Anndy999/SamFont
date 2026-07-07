@@ -27,7 +27,7 @@ object FontRepository {
         return fontDir
             .listFiles()
             ?.asSequence()
-            ?.filter { it.isFile && isSupportedFontFile(it.name) && canLoadFont(it) }
+            ?.filter { it.isFile && isValidFontFile(it) }
             ?.sortedBy { it.name.lowercase() }
             ?.map { file ->
                 val displayName = file.nameWithoutExtension.ifBlank { file.name }
@@ -38,7 +38,8 @@ object FontRepository {
                         FontFileModel(
                             path = file.absolutePath,
                             weight = 400,
-                            italic = false
+                            italic = false,
+                            previewAvailable = canPreviewFont(file)
                         )
                     ),
                     supportedWeights = defaultWeights,
@@ -63,17 +64,91 @@ object FontRepository {
 
     fun extensionFromMimeType(mimeType: String?): String? {
         return when (mimeType?.lowercase()) {
-            "font/ttf", "application/x-font-ttf", "application/font-sfnt" -> "ttf"
-            "font/otf", "application/x-font-otf" -> "otf"
-            "font/collection", "font/ttc" -> "ttc"
+            "font/ttf",
+            "font/sfnt",
+            "application/font-sfnt",
+            "application/x-font-ttf",
+            "application/x-font-truetype" -> "ttf"
+
+            "font/otf",
+            "application/x-font-otf",
+            "application/x-font-opentype",
+            "application/vnd.ms-opentype" -> "otf"
+
+            "font/ttc",
+            "font/collection",
+            "application/x-font-ttc" -> "ttc"
+
             else -> null
         }
     }
 
-    private fun canLoadFont(file: File): Boolean {
+    fun detectFontExtension(file: File): String? {
+        val header = ByteArray(4)
+        val readCount = runCatching {
+            file.inputStream().use { input -> input.read(header) }
+        }.getOrDefault(-1)
+
+        if (readCount < 4) {
+            return null
+        }
+
+        return when {
+            header.contentEquals(byteArrayOf(0x00, 0x01, 0x00, 0x00)) -> "ttf"
+            header.toAsciiString() == "true" -> "ttf"
+            header.toAsciiString() == "OTTO" -> "otf"
+            header.toAsciiString() == "ttcf" -> "ttc"
+            else -> null
+        }
+    }
+
+    fun isValidFontFile(file: File): Boolean {
+        val extension = findSupportedExtension(file.name)
+        val detectedExtension = detectFontExtension(file)
+        return extension != null && detectedExtension != null
+    }
+
+    fun canPreviewFont(file: File): Boolean {
         return runCatching {
-            // 扫描本地库时做一次轻量校验，避免非字体文件混入列表。
+            // 这里只表示 Android Typeface 预览引擎能否加载，不作为字体库显示条件。
             Typeface.Builder(file).build()
         }.isSuccess
+    }
+
+    fun normalizeDetectedExtension(file: File): File {
+        val detectedExtension = detectFontExtension(file) ?: return file
+        val currentExtension = findSupportedExtension(file.name)
+
+        if (currentExtension == detectedExtension) {
+            return file
+        }
+
+        val normalizedFile = uniqueSiblingFile(
+            directory = file.parentFile ?: return file,
+            baseName = file.nameWithoutExtension.ifBlank { "imported-font" },
+            extension = detectedExtension
+        )
+
+        return if (file.renameTo(normalizedFile)) {
+            normalizedFile
+        } else {
+            file
+        }
+    }
+
+    private fun uniqueSiblingFile(directory: File, baseName: String, extension: String): File {
+        var candidate = File(directory, "$baseName.$extension")
+        var index = 1
+
+        while (candidate.exists()) {
+            candidate = File(directory, "${baseName}_$index.$extension")
+            index += 1
+        }
+
+        return candidate
+    }
+
+    private fun ByteArray.toAsciiString(): String {
+        return String(this, Charsets.US_ASCII)
     }
 }
