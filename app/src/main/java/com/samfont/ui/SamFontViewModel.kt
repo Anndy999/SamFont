@@ -9,7 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.samfont.BuildConfig
 import com.samfont.core.apply.FontApplyDryRun
-import com.samfont.core.apply.ShizukuFontApplyBackend
+import com.samfont.core.apply.SamsungFontPackageBackend
 import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import com.samfont.core.font.FontState
@@ -43,23 +43,18 @@ data class SamFontUiState(
     val currentFontName: String,
     val fonts: List<FontFamilyModel>,
     val selectedTab: MainTab,
-    val screen: Screen,
+    val selectedFontSheet: FontFamilyModel?,
     val updateState: UpdateState,
     val currentVersionName: String
 ) {
     val installedFonts: List<FontFamilyModel>
-        get() = fonts.filter { it.state == FontState.Installed || it.state == FontState.Applied }
+        get() = fonts.filter { it.state == FontState.SystemInstalled || it.state == FontState.Applied }
 
     val availableFonts: List<FontFamilyModel>
-        get() = fonts.filter { it.state == FontState.Imported || it.state == FontState.Available }
+        get() = fonts.filter { it.state == FontState.Imported || it.state == FontState.Generated || it.state == FontState.Failed }
 
     val appliedFont: FontFamilyModel?
         get() = fonts.firstOrNull { it.state == FontState.Applied }
-}
-
-sealed class Screen {
-    data object Main : Screen()
-    data class Detail(val font: FontFamilyModel) : Screen()
 }
 
 sealed interface UiEvent {
@@ -73,7 +68,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             currentFontName = "Samsung Default",
             fonts = emptyList(),
             selectedTab = MainTab.Installed,
-            screen = Screen.Main,
+            selectedFontSheet = null,
             updateState = UpdateState.Idle,
             currentVersionName = BuildConfig.VERSION_NAME
         )
@@ -89,7 +84,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun selectTab(tab: MainTab) {
-        _uiState.update { it.copy(selectedTab = tab, screen = Screen.Main) }
+        _uiState.update { it.copy(selectedTab = tab, selectedFontSheet = null) }
     }
 
     fun refreshFonts() {
@@ -129,11 +124,11 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openFont(font: FontFamilyModel) {
-        _uiState.update { current -> current.copy(screen = Screen.Detail(font)) }
+        _uiState.update { current -> current.copy(selectedFontSheet = font) }
     }
 
-    fun goMain() {
-        _uiState.update { current -> current.copy(screen = Screen.Main) }
+    fun dismissFontSheet() {
+        _uiState.update { current -> current.copy(selectedFontSheet = null) }
     }
 
     fun installUpdate(context: Context) {
@@ -193,7 +188,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             val first = imported.firstOrNull()
             if (first != null) {
                 _uiState.update { current ->
-                    current.copy(screen = Screen.Detail(first), selectedTab = MainTab.Available)
+                    current.copy(selectedFontSheet = first, selectedTab = MainTab.Available)
                 }
                 emitMessage("已添加到预览，确认后再安装")
             } else {
@@ -220,11 +215,15 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
 
     fun handleFontPrimaryAction(font: FontFamilyModel) {
         when (font.state) {
-            FontState.Available,
-            FontState.Imported -> installSelectedFont(font)
-            FontState.Installed -> applySelectedFont(font)
+            FontState.Imported,
+            FontState.Generated,
+            FontState.Failed -> installSelectedFont(font)
+            FontState.SystemInstalled -> applySelectedFont(font)
             FontState.Applied -> viewModelScope.launch { emitMessage("当前已应用该字体") }
-            FontState.Broken -> viewModelScope.launch { emitMessage("字体不可用") }
+            FontState.Generating,
+            FontState.Installing,
+            FontState.Applying,
+            FontState.Broken -> viewModelScope.launch { emitMessage("当前状态不可操作") }
         }
     }
 
@@ -241,7 +240,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { current ->
                         current.copy(
                             selectedTab = MainTab.Installed,
-                            screen = Screen.Detail(result.font)
+                            selectedFontSheet = result.font
                         )
                     }
                     emitMessage(if (result.duplicate) "字体已安装，可应用" else "已安装，可应用")
@@ -268,7 +267,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val installedFile = FontRepository.findInstalledFile(context, targetHash)
-            val backend = ShizukuFontApplyBackend(status)
+            val backend = SamsungFontPackageBackend(status)
             val plan = backend.createPlan(
                 fontFamily = font,
                 currentHash = FontRepository.readAppliedHash(context),
@@ -297,7 +296,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { current ->
                     current.copy(
                         selectedTab = MainTab.Installed,
-                        screen = applied?.let { Screen.Detail(it) } ?: Screen.Main
+                        selectedFontSheet = applied
                     )
                 }
             }

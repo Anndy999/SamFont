@@ -12,16 +12,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samfont.core.font.FontFamilyModel
-import com.samfont.core.font.FontState
+import com.samfont.theme.SamFontColors
+import com.samfont.theme.SamFontDimens
 
 @Composable
 fun HomeScreen(
@@ -49,21 +48,13 @@ fun HomeScreen(
                     Text(
                         text = "${uiState.installedFonts.size} fonts installed",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = SamFontColors.TextSecondary
                     )
                 }
-                item {
-                    Text(text = "Applied", style = MaterialTheme.typography.titleLarge)
-                }
-                item {
-                    AppliedFontCard(font = uiState.appliedFont, onOpenFont = onOpenFont)
-                }
-                item {
-                    Text(text = "All Fonts", style = MaterialTheme.typography.titleLarge)
-                }
-                item {
-                    DefaultFontCard(active = uiState.appliedFont == null)
-                }
+                item { Text(text = "Applied", style = MaterialTheme.typography.titleLarge) }
+                item { AppliedFontCard(font = uiState.appliedFont, onOpenFont = onOpenFont) }
+                item { Text(text = "All Fonts", style = MaterialTheme.typography.titleLarge) }
+                item { DefaultFontCard(active = uiState.appliedFont == null) }
                 items(uiState.installedFonts, key = FontFamilyModel::id) { font ->
                     FontCard(font = font, onClick = { onOpenFont(font) })
                 }
@@ -81,8 +72,8 @@ fun HomeScreen(
                 item {
                     AddFontActionCard(
                         title = "Add fonts from folder",
-                        subtitle = "Pick a folder — all .ttf/.otf files load at once",
-                        leading = "↧",
+                        subtitle = "Pick a folder - all .ttf/.otf files load at once",
+                        leading = "↓",
                         onClick = onImportFolder
                     )
                 }
@@ -91,7 +82,7 @@ fun HomeScreen(
                     item {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(28.dp),
+                            shape = RoundedCornerShape(SamFontDimens.CardRadius),
                             color = MaterialTheme.colorScheme.surface
                         ) {
                             Column(
@@ -102,13 +93,13 @@ fun HomeScreen(
                                 Text(
                                     text = "Tap above to add a .ttf file.",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = SamFontColors.TextSecondary
                                 )
                             }
                         }
                     }
                 } else {
-                    item { Text(text = "Ready to install", style = MaterialTheme.typography.titleLarge) }
+                    item { Text(text = "Ready to generate", style = MaterialTheme.typography.titleLarge) }
                     items(uiState.availableFonts, key = FontFamilyModel::id) { font ->
                         FontCard(font = font, onClick = { onOpenFont(font) })
                     }
@@ -130,15 +121,18 @@ fun HomeScreen(
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
+                        shape = RoundedCornerShape(SamFontDimens.CardRadius),
                         color = MaterialTheme.colorScheme.surface
                     ) {
-                        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(text = "Search", style = MaterialTheme.typography.headlineSmall)
                             Text(
                                 text = "Search will be added later.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = SamFontColors.TextSecondary
                             )
                         }
                     }
@@ -157,7 +151,7 @@ private fun SamsungHeader(active: Boolean) {
         Text(
             text = "Samsung",
             style = MaterialTheme.typography.titleLarge,
-            color = Color(0xFF0B78D0)
+            color = SamFontColors.PrimaryBlueDark
         )
         Text(
             text = "Fonts",
@@ -166,13 +160,13 @@ private fun SamsungHeader(active: Boolean) {
             color = MaterialTheme.colorScheme.onBackground
         )
         Surface(
-            shape = RoundedCornerShape(999.dp),
-            color = if (active) Color(0xFFDCEEFF) else Color(0xFFFBEAEA)
+            shape = RoundedCornerShape(SamFontDimens.PillRadius),
+            color = if (active) SamFontColors.ActiveBlueContainer else SamFontColors.ErrorContainer
         ) {
             Text(
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
                 text = if (active) "● Active" else "● Not authorized",
-                color = if (active) Color(0xFF0B78D0) else Color(0xFFB3261E),
+                color = if (active) SamFontColors.PrimaryBlueDark else SamFontColors.Error,
                 style = MaterialTheme.typography.titleMedium
             )
         }
@@ -189,7 +183,7 @@ private fun AddFontActionCard(
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(SamFontDimens.CardRadius),
         color = MaterialTheme.colorScheme.surface
     ) {
         Row(
@@ -197,19 +191,19 @@ private fun AddFontActionCard(
             horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFFDCEEFF)
+                shape = RoundedCornerShape(SamFontDimens.IconContainerRadius),
+                color = SamFontColors.ActiveBlueContainer
             ) {
                 Text(
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
                     text = leading,
-                    color = Color(0xFF0B78D0),
+                    color = SamFontColors.PrimaryBlueDark,
                     style = MaterialTheme.typography.headlineSmall
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(text = title, style = MaterialTheme.typography.titleLarge)
-                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = SamFontColors.TextSecondary)
             }
         }
     }
@@ -231,8 +225,8 @@ private fun AppliedFontCard(
 private fun DefaultFontCard(active: Boolean) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = if (active) Color(0xFFDCEEFF) else MaterialTheme.colorScheme.surface
+        shape = RoundedCornerShape(SamFontDimens.CardRadius),
+        color = if (active) SamFontColors.ActiveBlueContainer else MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.padding(22.dp),
@@ -242,12 +236,12 @@ private fun DefaultFontCard(active: Boolean) {
             Text(
                 text = "The quick brown fox",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = SamFontColors.TextSecondary
             )
             Text(
                 text = if (active) "System / Active" else "System",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF0B78D0)
+                color = SamFontColors.PrimaryBlueDark
             )
         }
     }

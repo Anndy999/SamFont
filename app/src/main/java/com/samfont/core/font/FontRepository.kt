@@ -33,7 +33,7 @@ object FontRepository {
     fun scanFonts(context: Context): List<FontFamilyModel> {
         ensureDirs(context)
         val appliedHash = readAppliedHash(context)
-        val installed = scanDir(installedDir(context), FontState.Installed, appliedHash)
+        val installed = scanDir(installedDir(context), FontState.SystemInstalled, appliedHash)
         val imported = scanDir(importedDir(context), FontState.Imported, appliedHash)
 
         return (installed + imported)
@@ -42,11 +42,11 @@ object FontRepository {
     }
 
     fun installedFonts(context: Context): List<FontFamilyModel> {
-        return scanFonts(context).filter { it.state == FontState.Installed || it.state == FontState.Applied }
+        return scanFonts(context).filter { it.state == FontState.SystemInstalled || it.state == FontState.Applied }
     }
 
     fun importedFonts(context: Context): List<FontFamilyModel> {
-        return scanFonts(context).filter { it.state == FontState.Imported || it.state == FontState.Available }
+        return scanFonts(context).filter { it.state == FontState.Imported || it.state == FontState.Generated }
     }
 
     fun importFontFile(context: Context, source: File, displayName: String): ImportResult {
@@ -82,7 +82,7 @@ object FontRepository {
 
         val hash = font.files.first().sha256
         findInDir(installedDir(context), hash)?.let {
-            val installed = buildFamilies(it, FontState.Installed, readAppliedHash(context)).first()
+            val installed = buildFamilies(it, FontState.SystemInstalled, readAppliedHash(context)).first()
             return InstallResult.Success(installed, duplicate = true)
         }
 
@@ -90,7 +90,7 @@ object FontRepository {
         source.copyTo(target, overwrite = false)
         val normalized = normalizeDetectedExtension(target)
         normalized.setReadable(true, false)
-        val installed = buildFamilies(normalized, FontState.Installed, readAppliedHash(context)).first()
+        val installed = buildFamilies(normalized, FontState.SystemInstalled, readAppliedHash(context)).first()
         return InstallResult.Success(installed, duplicate = false)
     }
 
@@ -189,7 +189,7 @@ object FontRepository {
                 ?: file.nameWithoutExtension.ifBlank { file.name }
             val actualState = when {
                 !file.exists() -> FontState.Broken
-                hash == appliedHash && state == FontState.Installed -> FontState.Applied
+                hash == appliedHash && state == FontState.SystemInstalled -> FontState.Applied
                 else -> state
             }
             val id = if (ttcIndex != null) "$hash#$ttcIndex" else hash

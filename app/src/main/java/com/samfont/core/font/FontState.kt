@@ -1,9 +1,13 @@
 package com.samfont.core.font
 
 enum class FontState {
-    Available,
     Imported,
-    Installed,
+    Generating,
+    Generated,
+    Installing,
+    SystemInstalled,
+    Applying,
     Applied,
+    Failed,
     Broken
 }

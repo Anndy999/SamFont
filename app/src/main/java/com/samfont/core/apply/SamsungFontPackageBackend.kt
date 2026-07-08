@@ -3,7 +3,7 @@ package com.samfont.core.apply
 import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.privilege.PrivilegeStatus
 
-class ShizukuFontApplyBackend(
+class SamsungFontPackageBackend(
     private val privilegeStatus: PrivilegeStatus
 ) : FontApplyBackend {
     override fun getCurrentFont(): String = "Samsung Default"
@@ -44,15 +44,21 @@ class ShizukuFontApplyBackend(
             )
         }
 
+        val packageName = "com.monotype.android.font.samfont.${plan.fontId.take(12)}"
         return FontApplyResult(
             success = false,
-            message = "已调用 Shizuku 字体后端，但真实系统字体写入尚未实现，未更改系统字体。",
+            message = "Samsung 字体 APK 生成/安装后端尚未完成，未更改系统字体。",
             backendLog = buildString {
-                appendLine("Shizuku UID=${shizuku.uid}, source=${shizuku.source}")
+                appendLine("Required backend pipeline:")
+                appendLine("1. Generate Samsung font APK for package=$packageName")
+                appendLine("2. Sign APK")
+                appendLine("3. Install through Shizuku PackageInstaller session")
+                appendLine("4. Verify package and Samsung font list")
+                appendLine("5. Apply only after verification")
+                appendLine("Current Shizuku UID=${shizuku.uid}, source=${shizuku.source}")
                 appendLine("fontId=${plan.fontId}")
                 appendLine("targetHash=${plan.targetHash}")
-                appendLine("installedPath=${fontFamily.files.firstOrNull()?.path.orEmpty()}")
-                append("Refused to fake Applied state.")
+                append("installedPath=${fontFamily.files.firstOrNull()?.path.orEmpty()}")
             }
         )
     }
@@ -60,7 +66,7 @@ class ShizukuFontApplyBackend(
     override fun rollback(): FontApplyResult {
         return FontApplyResult(
             success = false,
-            message = "Shizuku 回滚后端尚未实现。",
+            message = "Samsung 字体回滚后端尚未实现。",
             backendLog = "Rollback refused."
         )
     }
