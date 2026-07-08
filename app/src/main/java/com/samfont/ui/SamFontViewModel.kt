@@ -67,7 +67,16 @@ data class SamFontUiState(
 }
 
 sealed interface UiEvent {
-    data class Snackbar(val message: String) : UiEvent
+    data class Snackbar(
+        val message: String,
+        val actionLabel: String? = null,
+        val action: SnackbarAction = SnackbarAction.None
+    ) : UiEvent
+}
+
+enum class SnackbarAction {
+    None,
+    CopyInstallLog
 }
 
 class SamFontViewModel(application: Application) : AndroidViewModel(application) {
@@ -319,12 +328,24 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             }
-            emitMessage(if (result.success) result.message else "字体包安装失败，点击查看日志")
+            if (result.success) {
+                emitMessage(result.message)
+            } else {
+                emitMessage(
+                    message = "字体包安装失败",
+                    actionLabel = "复制日志",
+                    action = SnackbarAction.CopyInstallLog
+                )
+            }
         }
     }
 
-    private suspend fun emitMessage(message: String) {
-        _events.emit(UiEvent.Snackbar(message))
+    private suspend fun emitMessage(
+        message: String,
+        actionLabel: String? = null,
+        action: SnackbarAction = SnackbarAction.None
+    ) {
+        _events.emit(UiEvent.Snackbar(message, actionLabel, action))
     }
 
     private fun copyFontToImportedDir(context: Context, uri: Uri): FontRepository.ImportResult {

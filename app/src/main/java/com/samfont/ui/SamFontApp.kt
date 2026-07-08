@@ -12,6 +12,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,10 +51,16 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is UiEvent.Snackbar -> snackbarHostState.showSnackbar(
-                    message = event.message,
-                    duration = SnackbarDuration.Short
-                )
+                is UiEvent.Snackbar -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = event.actionLabel,
+                        duration = if (event.actionLabel == null) SnackbarDuration.Short else SnackbarDuration.Long
+                    )
+                    if (result == SnackbarResult.ActionPerformed && event.action == SnackbarAction.CopyInstallLog) {
+                        viewModel.copyInstallLog(context)
+                    }
+                }
             }
         }
     }
