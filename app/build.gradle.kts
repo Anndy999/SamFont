@@ -12,8 +12,8 @@ android {
         applicationId = "com.samfont"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10305
-        versionName = "1.3.5"
+        versionCode = 10306
+        versionName = "1.3.6"
     }
 
     flavorDimensions += "installMode"

@@ -21,17 +21,6 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
             firstAttempt
         }
 
-        if (!retryAttempt.success) {
-            appendLog(
-                log,
-                ShizukuBridge.runShellWithInput(
-                    command = "/system/bin/pm install -r --user 0 -S ${apk.length()} -",
-                    inputFile = apk,
-                    timeoutSeconds = 300
-                )
-            )
-        }
-
         return@withContext if (verifyInstalled(packageName, log)) {
             ShizukuInstallResult(true, packageName, "字体包安装成功", log.toString())
         } else {

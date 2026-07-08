@@ -131,9 +131,22 @@ object ShizukuBridge {
                 stdinErrors.appendLine(exception.stackTraceToString())
             }
 
-            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            if (!finished) {
+            val waitResult = WaitResult()
+            val waitThread = Thread {
+                runCatching { process.waitFor() }
+                    .onSuccess { waitResult.exitCode = it }
+                    .onFailure {
+                        waitResult.error = it
+                        waitResult.exitCode = -1
+                    }
+                waitResult.finished = true
+            }
+            waitThread.start()
+            waitThread.join(TimeUnit.SECONDS.toMillis(timeoutSeconds))
+
+            if (!waitResult.finished) {
                 process.destroy()
+                waitThread.join(3_000)
                 outThread.join(3_000)
                 errThread.join(3_000)
                 return ShellResult(
@@ -150,14 +163,12 @@ object ShizukuBridge {
             }
             outThread.join(3_000)
             errThread.join(3_000)
-            val exitCode = runCatching { process.exitValue() }
-                .getOrElse {
-                    stdinErrors.appendLine("exitValue failed: ${it.message}")
-                    stdinErrors.appendLine(it.stackTraceToString())
-                    -1
-                }
+            waitResult.error?.let {
+                stdinErrors.appendLine("waitFor failed: ${it.message}")
+                stdinErrors.appendLine(it.stackTraceToString())
+            }
             ShellResult(
-                exitCode = exitCode,
+                exitCode = waitResult.exitCode,
                 stdout = stdout.toString(Charsets.UTF_8.name()),
                 stderr = buildString {
                     if (stdinErrors.isNotBlank()) append(stdinErrors)
@@ -177,6 +188,15 @@ object ShizukuBridge {
                 command = command
             )
         }
+    }
+
+    private class WaitResult {
+        @Volatile
+        var finished: Boolean = false
+        @Volatile
+        var exitCode: Int = -1
+        @Volatile
+        var error: Throwable? = null
     }
 
     private fun newRemoteProcess(command: Array<String>): Process {
