@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samfont.core.font.FontFamilyModel
+import com.samfont.core.font.FontInstallState
 
 @Composable
 fun FontCard(
@@ -44,11 +45,25 @@ fun FontCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "${font.supportedWeights.size} weights / ${if (font.isVariableFont) "Variable" else "Local"}",
+                    text = "${font.installState.label()} / ${if (font.isVariableFont) "Variable" else "Static"} / ${font.fileType.uppercase()}",
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = if (font.previewAvailable) "Android 可预览" else "预览不可用，文件已保留",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
+    }
+}
+
+private fun FontInstallState.label(): String {
+    return when (this) {
+        FontInstallState.Imported -> "Imported"
+        FontInstallState.Installed -> "Installed"
+        FontInstallState.Applied -> "Applied"
+        FontInstallState.Broken -> "Broken"
     }
 }

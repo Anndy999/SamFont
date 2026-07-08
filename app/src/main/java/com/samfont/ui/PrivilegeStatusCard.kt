@@ -27,6 +27,7 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
     } else {
         Color(0xFFB3261E)
     }
+    val unknown = "未知"
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -55,17 +56,12 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                text = "当前 UID: ${status.uid} / AppId: ${status.appId}",
+                text = "App UID: ${status.uid} / AppId: ${status.appId}",
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                text = "安装模式: ${status.installMode}",
-                color = contentColor,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                text = "Package UID: ${status.packageUid ?: "未知"} / 来源: ${status.detectionSource}",
+                text = "Package UID: ${status.packageUid ?: unknown} / 检测来源: ${status.detectionSource}",
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -75,17 +71,17 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                text = "Real: ${status.realUid ?: "未知"} / Saved: ${status.savedSetUid ?: "未知"} / FS: ${status.fileSystemUid ?: "未知"}",
+                text = "Real: ${status.realUid ?: unknown} / Saved: ${status.savedSetUid ?: unknown} / FS: ${status.fileSystemUid ?: unknown}",
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                text = "SELinux: ${status.selinuxContext ?: "未知"}",
+                text = "SELinux: ${status.selinuxContext ?: unknown}",
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                text = "Shizuku: ${status.shizukuStatus?.uid ?: "未知"} / ${status.shizukuStatus?.source ?: "不可用"}",
+                text = "Shizuku UID: ${status.shizukuStatus?.uid ?: unknown} / 来源: ${status.shizukuStatus?.source ?: unknown}",
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -94,13 +90,6 @@ fun PrivilegeStatusCard(status: PrivilegeStatus) {
                 color = contentColor,
                 style = MaterialTheme.typography.bodySmall
             )
-            if (!status.canApplySystemFont && status.installMode == "normal") {
-                Text(
-                    text = "诊断: normal APK 不声明 android.uid.system，不能获得 UID1000。",
-                    color = contentColor,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
         }
     }
 }

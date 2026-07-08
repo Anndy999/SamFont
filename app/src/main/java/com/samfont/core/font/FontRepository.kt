@@ -3,9 +3,13 @@ package com.samfont.core.font
 import android.content.Context
 import android.graphics.Typeface
 import com.samfont.core.font.variation.FontCompatibilityReport
+import com.samfont.core.font.variation.FontVariationInfo
 import com.samfont.core.font.variation.OpenTypeCoverageParser
+import com.samfont.core.font.variation.OpenTypeMetadataParser
 import com.samfont.core.font.variation.OpenTypeVariationParser
 import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,76 +21,97 @@ object FontRepository {
     private val _fontFamilies = MutableStateFlow<List<FontFamilyModel>>(emptyList())
     val fontFamilies: StateFlow<List<FontFamilyModel>> = _fontFamilies.asStateFlow()
 
+    fun importedDir(context: Context): File = File(context.filesDir, "fonts/imported")
+
+    fun installedDir(context: Context): File = File(context.filesDir, "fonts/installed")
+
+    fun appliedHashFile(context: Context): File = File(context.filesDir, "fonts/current-applied.sha256")
+
     fun reload(context: Context) {
         _fontFamilies.value = scanInstalledFonts(context)
     }
 
     fun scanInstalledFonts(context: Context): List<FontFamilyModel> {
-        val fontDir = File(context.filesDir, "fonts")
-        if (!fontDir.exists()) {
-            return emptyList()
+        ensureDirs(context)
+        val appliedHash = readAppliedHash(context)
+        val imported = scanDir(importedDir(context), FontInstallState.Imported, appliedHash)
+        val installed = scanDir(installedDir(context), FontInstallState.Installed, appliedHash)
+
+        // installed 目录优先。相同 hash 的 imported 副本不重复显示。
+        return (installed + imported)
+            .distinctBy { it.id }
+            .sortedWith(compareBy<FontFamilyModel> { it.installState.ordinal }.thenBy { it.displayName.lowercase() })
+    }
+
+    fun importFontFile(context: Context, source: File, displayName: String): ImportResult {
+        ensureDirs(context)
+        val detectedExtension = detectFontExtension(source)
+            ?: return ImportResult.Failure("不是有效字体文件")
+        val hash = sha256(source)
+
+        findByHash(context, hash)?.let {
+            return ImportResult.Success(it, duplicate = true)
         }
 
-        return fontDir
-            .listFiles()
-            ?.asSequence()
-            ?.filter { it.isFile && isValidFontFile(it) }
-            ?.sortedBy { it.name.lowercase() }
-            ?.map { file ->
-                val displayName = file.nameWithoutExtension.ifBlank { file.name }
-                val variationInfo = OpenTypeVariationParser.parse(file)
-                val previewAvailable = canPreviewFont(file)
-                val report = buildCompatibilityReport(file, variationInfo, previewAvailable)
-                FontFamilyModel(
-                    id = "${displayName}_${file.absolutePath.hashCode()}",
-                    displayName = displayName,
-                    files = listOf(
-                        FontFileModel(
-                            path = file.absolutePath,
-                            weight = 400,
-                            italic = false,
-                            previewAvailable = previewAvailable
-                        )
-                    ),
-                    supportedWeights = defaultWeights,
-                    isVariableFont = variationInfo?.isVariable == true,
-                    variationInfo = variationInfo,
-                    compatibilityReport = report
-                )
-            }
-            ?.toList()
-            ?: emptyList()
+        val target = uniqueFile(importedDir(context), sanitizeBaseName(displayName), detectedExtension)
+        source.copyTo(target, overwrite = false)
+        val normalized = normalizeDetectedExtension(target)
+
+        if (!isValidFontFile(normalized)) {
+            normalized.delete()
+            return ImportResult.Failure("不是有效字体文件")
+        }
+
+        return ImportResult.Success(normalized, duplicate = false)
     }
 
-    fun isSupportedFontFile(name: String): Boolean {
-        return findSupportedExtension(name) != null
+    fun installFont(context: Context, font: FontFamilyModel): InstallResult {
+        ensureDirs(context)
+        val source = font.files.firstOrNull()?.let { File(it.path) }
+            ?: return InstallResult.Failure("字体文件不存在")
+        if (!source.exists() || !isValidFontFile(source)) {
+            return InstallResult.Failure("字体文件不可用")
+        }
+
+        val hash = font.files.first().sha256
+        findInDir(installedDir(context), hash)?.let {
+            return InstallResult.Success(it, duplicate = true)
+        }
+
+        val target = uniqueFile(installedDir(context), sanitizeBaseName(font.displayName), font.fileType)
+        source.copyTo(target, overwrite = false)
+        normalizeDetectedExtension(target)
+        return InstallResult.Success(findInDir(installedDir(context), hash) ?: target, duplicate = false)
     }
+
+    fun markApplied(context: Context, hash: String) {
+        val file = appliedHashFile(context)
+        file.parentFile?.mkdirs()
+        val old = file.takeIf { it.exists() }?.readText()?.trim()
+        if (old != hash) {
+            atomicWrite(file, hash)
+        }
+    }
+
+    fun readAppliedHash(context: Context): String? {
+        return appliedHashFile(context).takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
+    }
+
+    fun findInstalledFile(context: Context, hash: String): File? = findInDir(installedDir(context), hash)
 
     fun findSupportedExtension(name: String?): String? {
-        if (name.isNullOrBlank()) {
-            return null
-        }
+        if (name.isNullOrBlank()) return null
         val extension = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
         return extension.takeIf { it in supportedExtensions }
     }
 
     fun extensionFromMimeType(mimeType: String?): String? {
         return when (mimeType?.lowercase()) {
-            "font/ttf",
-            "font/sfnt",
-            "application/font-sfnt",
-            "application/x-font-ttf",
-            "application/x-font-truetype" -> "ttf"
-
-            "font/otf",
-            "application/x-font-otf",
-            "application/x-font-opentype",
+            "font/ttf", "font/sfnt", "application/font-sfnt",
+            "application/x-font-ttf", "application/x-font-truetype" -> "ttf"
+            "font/otf", "application/x-font-otf", "application/x-font-opentype",
             "application/vnd.ms-opentype" -> "otf"
-
-            "font/ttc",
-            "font/collection",
-            "application/x-font-ttc" -> "ttc"
-
+            "font/ttc", "font/collection", "application/x-font-ttc" -> "ttc"
             else -> null
         }
     }
@@ -94,12 +119,9 @@ object FontRepository {
     fun detectFontExtension(file: File): String? {
         val header = ByteArray(4)
         val readCount = runCatching {
-            file.inputStream().use { input -> input.read(header) }
+            file.inputStream().use { it.read(header) }
         }.getOrDefault(-1)
-
-        if (readCount < 4) {
-            return null
-        }
+        if (readCount < 4) return null
 
         return when {
             header.contentEquals(byteArrayOf(0x00, 0x01, 0x00, 0x00)) -> "ttf"
@@ -110,80 +132,180 @@ object FontRepository {
         }
     }
 
-    fun isValidFontFile(file: File): Boolean {
-        val extension = findSupportedExtension(file.name)
-        val detectedExtension = detectFontExtension(file)
-        return extension != null && detectedExtension != null
-    }
+    fun isValidFontFile(file: File): Boolean = detectFontExtension(file) != null
 
-    fun canPreviewFont(file: File): Boolean {
+    fun canPreviewFont(file: File, ttcIndex: Int? = null): Boolean {
         return runCatching {
-            // 这里只表示 Android Typeface 预览引擎能否加载，不作为字体库显示条件。
-            Typeface.Builder(file).build()
+            Typeface.Builder(file).apply {
+                ttcIndex?.let { setTtcIndex(it) }
+            }.build()
         }.isSuccess
     }
 
     fun normalizeDetectedExtension(file: File): File {
         val detectedExtension = detectFontExtension(file) ?: return file
         val currentExtension = findSupportedExtension(file.name)
+        if (currentExtension == detectedExtension) return file
 
-        if (currentExtension == detectedExtension) {
-            return file
-        }
-
-        val normalizedFile = uniqueSiblingFile(
+        val normalized = uniqueFile(
             directory = file.parentFile ?: return file,
             baseName = file.nameWithoutExtension.ifBlank { "imported-font" },
             extension = detectedExtension
         )
-
-        return if (file.renameTo(normalizedFile)) {
-            normalizedFile
-        } else {
-            file
-        }
+        return if (file.renameTo(normalized)) normalized else file
     }
 
-    private fun uniqueSiblingFile(directory: File, baseName: String, extension: String): File {
-        var candidate = File(directory, "$baseName.$extension")
-        var index = 1
-
-        while (candidate.exists()) {
-            candidate = File(directory, "${baseName}_$index.$extension")
-            index += 1
+    fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
         }
-
-        return candidate
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun ByteArray.toAsciiString(): String {
-        return String(this, Charsets.US_ASCII)
+    private fun ensureDirs(context: Context) {
+        importedDir(context).mkdirs()
+        installedDir(context).mkdirs()
+    }
+
+    private fun scanDir(directory: File, state: FontInstallState, appliedHash: String?): List<FontFamilyModel> {
+        return directory
+            .listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && isValidFontFile(it) }
+            ?.flatMap { file -> buildFamilies(file, state, appliedHash).asSequence() }
+            ?.toList()
+            .orEmpty()
+    }
+
+    private fun buildFamilies(file: File, state: FontInstallState, appliedHash: String?): List<FontFamilyModel> {
+        val fileType = detectFontExtension(file) ?: "unknown"
+        val faceCount = if (fileType == "ttc") OpenTypeMetadataParser.ttcFaceCount(file) else 1
+        val hash = sha256(file)
+
+        return (0 until faceCount).map { index ->
+            val ttcIndex = if (fileType == "ttc") index else null
+            val metadata = OpenTypeMetadataParser.parse(file, index)
+            val variationInfo = OpenTypeVariationParser.parse(file, index)
+            val previewAvailable = canPreviewFont(file, ttcIndex)
+            val report = buildCompatibilityReport(file, fileType, variationInfo, previewAvailable, ttcIndex)
+            val displayName = metadata.fullName
+                ?: metadata.familyName
+                ?: file.nameWithoutExtension.ifBlank { file.name }
+            val actualState = when {
+                !file.exists() -> FontInstallState.Broken
+                hash == appliedHash -> FontInstallState.Applied
+                else -> state
+            }
+            val id = if (ttcIndex != null) "$hash#$ttcIndex" else hash
+
+            FontFamilyModel(
+                id = id,
+                displayName = displayName,
+                files = listOf(
+                    FontFileModel(
+                        path = file.absolutePath,
+                        sha256 = hash,
+                        fileType = fileType,
+                        weight = metadata.weight,
+                        italic = metadata.subfamilyName?.contains("italic", ignoreCase = true) == true,
+                        previewAvailable = previewAvailable,
+                        ttcIndex = ttcIndex
+                    )
+                ),
+                supportedWeights = defaultWeights,
+                isVariableFont = variationInfo?.isVariable == true,
+                installState = actualState,
+                fileType = fileType,
+                previewAvailable = previewAvailable,
+                variationInfo = variationInfo,
+                compatibilityReport = report
+            )
+        }
     }
 
     private fun buildCompatibilityReport(
         file: File,
-        variationInfo: com.samfont.core.font.variation.FontVariationInfo?,
-        previewAvailable: Boolean
+        fileType: String,
+        variationInfo: FontVariationInfo?,
+        previewAvailable: Boolean,
+        ttcIndex: Int?
     ): FontCompatibilityReport {
-        val fileType = detectFontExtension(file) ?: findSupportedExtension(file.name) ?: "unknown"
-        val cjk = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '字'.code, '月'.code))
-        val simplified = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '简'.code, '体'.code))
-        val traditional = OpenTypeCoverageParser.hasCodePoints(file, listOf('漢'.code, '繁'.code, '體'.code))
-        val axes = variationInfo?.axes.orEmpty()
-        val instances = variationInfo?.namedInstances.orEmpty()
+        val index = ttcIndex ?: 0
+        val cjk = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '字'.code, '高'.code), index)
+        val simplified = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '简'.code, '体'.code), index)
+        val traditional = OpenTypeCoverageParser.hasCodePoints(file, listOf('漢'.code, '繁'.code, '體'.code), index)
 
         return FontCompatibilityReport(
             fileType = fileType,
             isVariableFont = variationInfo?.isVariable == true,
-            axes = axes,
-            namedInstances = instances,
+            axes = variationInfo?.axes.orEmpty(),
+            namedInstances = variationInfo?.namedInstances.orEmpty(),
             androidPreviewAvailable = previewAvailable,
             hasCjkCoverage = cjk,
             hasSimplifiedChineseCoverage = simplified,
             hasTraditionalChineseCoverage = traditional,
             isTtc = fileType == "ttc",
-            suitableForSystemFont = previewAvailable && cjk
+            suitableForSystemFont = isValidFontFile(file) && cjk
         )
     }
 
+    private fun findByHash(context: Context, hash: String): File? {
+        return findInDir(installedDir(context), hash) ?: findInDir(importedDir(context), hash)
+    }
+
+    private fun findInDir(directory: File, hash: String): File? {
+        return directory.listFiles()?.firstOrNull {
+            it.isFile && isValidFontFile(it) && sha256(it) == hash
+        }
+    }
+
+    private fun uniqueFile(directory: File, baseName: String, extension: String): File {
+        directory.mkdirs()
+        var candidate = File(directory, "$baseName.$extension")
+        var index = 1
+        while (candidate.exists()) {
+            candidate = File(directory, "${baseName}_$index.$extension")
+            index += 1
+        }
+        return candidate
+    }
+
+    private fun sanitizeBaseName(name: String): String {
+        return name
+            .substringBeforeLast('.', name)
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .trim()
+            .take(80)
+            .ifBlank { "imported-font" }
+    }
+
+    private fun atomicWrite(file: File, content: String) {
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        FileOutputStream(tmp).use { output ->
+            output.write(content.toByteArray())
+            output.fd.sync()
+        }
+        if (!tmp.renameTo(file)) {
+            tmp.copyTo(file, overwrite = true)
+            tmp.delete()
+        }
+    }
+
+    private fun ByteArray.toAsciiString(): String = String(this, Charsets.US_ASCII)
+
+    sealed class ImportResult {
+        data class Success(val file: File, val duplicate: Boolean) : ImportResult()
+        data class Failure(val message: String) : ImportResult()
+    }
+
+    sealed class InstallResult {
+        data class Success(val file: File, val duplicate: Boolean) : InstallResult()
+        data class Failure(val message: String) : InstallResult()
+    }
 }

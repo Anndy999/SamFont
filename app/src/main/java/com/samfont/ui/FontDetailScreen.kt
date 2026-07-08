@@ -3,8 +3,8 @@ package com.samfont.ui
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -36,29 +36,30 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samfont.BuildConfig
 import com.samfont.core.font.FontFamilyModel
+import com.samfont.core.font.FontInstallState
 import com.samfont.core.font.variation.FontVariationAxis
 import com.samfont.core.preview.FontPreviewEngine
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextAlign
 import java.io.File
 
 @Composable
 fun FontDetailScreen(
     modifier: Modifier = Modifier,
     font: FontFamilyModel,
+    canApplySystemFont: Boolean,
     onBack: () -> Unit,
-    onApply: () -> Unit
+    onPrimaryAction: () -> Unit
 ) {
     var selectedWeight by rememberSaveable(font.id) {
-        mutableIntStateOf(font.supportedWeights.firstOrNull() ?: 400)
+        mutableIntStateOf(font.files.firstOrNull()?.weight ?: 400)
     }
-
     val previewFile = font.files.firstOrNull()
     val visibleAxes = remember(font.variationInfo) {
         font.variationInfo
@@ -89,6 +90,12 @@ fun FontDetailScreen(
     val previewFontFamily = remember(typeface) {
         typeface?.let { FontFamily(it) } ?: FontFamily.Default
     }
+    val buttonEnabled = when (font.installState) {
+        FontInstallState.Imported -> true
+        FontInstallState.Installed -> canApplySystemFont
+        FontInstallState.Applied -> false
+        FontInstallState.Broken -> false
+    }
 
     Column(
         modifier = modifier
@@ -108,7 +115,7 @@ fun FontDetailScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = if (font.isVariableFont) "Variable Font 结构已预留" else "本地字体预览",
+                    text = "${font.installState.name} / ${if (font.isVariableFont) "Variable" else "Static"} / ${font.fileType.uppercase()}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -124,7 +131,7 @@ fun FontDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = "Variable Font",
+                    text = if (font.isVariableFont) "Variable Font" else "Font Preview",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -154,7 +161,12 @@ fun FontDetailScreen(
 
                 WeightSlider(
                     weight = selectedWeight,
-                    onWeightChange = { selectedWeight = it }
+                    onWeightChange = { weight ->
+                        selectedWeight = weight
+                        if (axisValues.containsKey("wght")) {
+                            axisValues = axisValues + ("wght" to weight.toFloat())
+                        }
+                    }
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -248,15 +260,9 @@ fun FontDetailScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                if (previewFile == null) {
+                if (previewFile == null || !previewFileExists) {
                     Text(
-                        text = "字体文件不存在，已回退系统字体",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else if (!previewFileExists) {
-                    Text(
-                        text = "字体文件不存在，已回退系统字体",
+                        text = "字体文件不存在，当前预览已回退系统字体。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -268,14 +274,12 @@ fun FontDetailScreen(
                     )
                 }
 
-                val previewTexts = listOf(
+                listOf(
                     "山高月小，水落石出",
                     "The quick brown fox jumps over the lazy dog",
                     "1234567890",
                     "符号：，。！？@#￥%&*"
-                )
-
-                previewTexts.forEach { text ->
+                ).forEach { text ->
                     Text(
                         text = text,
                         style = TextStyle(
@@ -341,9 +345,10 @@ fun FontDetailScreen(
 
         Button(
             modifier = Modifier.fillMaxWidth(),
-            onClick = onApply
+            enabled = buttonEnabled,
+            onClick = onPrimaryAction
         ) {
-            Text(text = "尝试应用字体")
+            Text(text = primaryButtonText(font.installState))
         }
     }
 }
@@ -358,13 +363,15 @@ private fun AxisControls(
     val standardAxes = axes.filter { it.standard }
     val customAxes = axes.filterNot { it.standard }
 
-    Text(
-        text = "标准轴",
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurface
-    )
-    standardAxes.forEach { axis ->
-        AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
+    if (standardAxes.isNotEmpty()) {
+        Text(
+            text = "标准轴",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        standardAxes.forEach { axis ->
+            AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
+        }
     }
 
     if (customAxes.isNotEmpty()) {
@@ -413,6 +420,15 @@ private fun AxisSlider(
     }
 }
 
+private fun primaryButtonText(state: FontInstallState): String {
+    return when (state) {
+        FontInstallState.Imported -> "安装"
+        FontInstallState.Installed -> "应用"
+        FontInstallState.Applied -> "当前已应用"
+        FontInstallState.Broken -> "字体不可用"
+    }
+}
+
 private fun trimAxisValue(value: Float): String {
     val intValue = value.toInt()
     return if (value == intValue.toFloat()) intValue.toString() else "%.2f".format(value)
@@ -446,9 +462,7 @@ private fun WeightSlider(
     val thumbFill = MaterialTheme.colorScheme.surface
 
     fun weightFromX(x: Float): Int {
-        if (widthPx <= 0) {
-            return weight
-        }
+        if (widthPx <= 0) return weight
 
         val min = 100
         val max = 900

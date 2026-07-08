@@ -10,11 +10,11 @@ import com.samfont.BuildConfig
 import com.samfont.core.apply.FontApplyDryRun
 import com.samfont.core.apply.StubFontApplyBackend
 import com.samfont.core.font.FontFamilyModel
+import com.samfont.core.font.FontInstallState
 import com.samfont.core.font.FontRepository
 import com.samfont.core.privilege.PrivilegeChecker
 import com.samfont.core.privilege.PrivilegeStatus
 import com.samfont.core.shizuku.ShizukuBridge
-import com.samfont.core.update.GithubReleaseUpdateBackend
 import com.samfont.core.update.UpdateInstaller
 import com.samfont.core.update.UpdateRepository
 import com.samfont.core.update.UpdateState
@@ -71,7 +71,8 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshFonts() {
-        FontRepository.reload(getApplication<Application>().applicationContext)
+        val context = getApplication<Application>().applicationContext
+        FontRepository.reload(context)
         _uiState.update { current ->
             current.copy(fonts = FontRepository.fontFamilies.value)
         }
@@ -160,32 +161,63 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                 return@launch
             }
 
-            val result = withContext(Dispatchers.IO) {
-                var importedCount = 0
-                val errors = mutableListOf<String>()
+            val (importedCount, errors) = withContext(Dispatchers.IO) {
+                var imported = 0
+                val failures = mutableListOf<String>()
 
                 uris.forEach { uri ->
                     runCatching {
-                        copyFontToPrivateDir(context.applicationContext, uri)
-                        importedCount += 1
+                        when (val result = copyFontToPrivateDir(context.applicationContext, uri)) {
+                            is FontRepository.ImportResult.Success -> {
+                                if (!result.duplicate) imported += 1
+                            }
+                            is FontRepository.ImportResult.Failure -> failures += result.message
+                        }
                     }.onFailure { throwable ->
-                        errors += throwable.message ?: "导入字体失败"
+                        failures += throwable.message ?: "导入字体失败"
                     }
                 }
 
                 FontRepository.reload(context.applicationContext)
-                val fonts = FontRepository.fontFamilies.value
-                _uiState.update { current -> current.copy(fonts = fonts) }
-                importedCount to errors
+                imported to failures
             }
 
-            val importedCount = result.first
-            val errors = result.second
+            _uiState.update { current ->
+                current.copy(fonts = FontRepository.fontFamilies.value)
+            }
 
             when {
                 importedCount > 0 && errors.isEmpty() -> emitMessage("已导入 $importedCount 个字体")
                 importedCount > 0 -> emitMessage("已导入 $importedCount 个字体，${errors.size} 个失败")
+                errors.isEmpty() -> emitMessage("字体已存在，未重复导入")
                 else -> emitMessage(errors.firstOrNull() ?: "没有可导入的字体文件")
+            }
+        }
+    }
+
+    fun handleFontPrimaryAction(font: FontFamilyModel) {
+        when (font.installState) {
+            FontInstallState.Imported -> installSelectedFont(font)
+            FontInstallState.Installed -> applySelectedFont(font)
+            FontInstallState.Applied -> viewModelScope.launch { emitMessage("当前已应用该字体") }
+            FontInstallState.Broken -> viewModelScope.launch { emitMessage("字体不可用") }
+        }
+    }
+
+    fun installSelectedFont(font: FontFamilyModel) {
+        viewModelScope.launch {
+            val context = getApplication<Application>().applicationContext
+            val result = withContext(Dispatchers.IO) {
+                FontRepository.installFont(context, font)
+            }
+
+            when (result) {
+                is FontRepository.InstallResult.Success -> {
+                    refreshFonts()
+                    updateDetailByHash(font.files.firstOrNull()?.sha256)
+                    emitMessage(if (result.duplicate) "字体已安装，无需重复复制" else "字体安装完成")
+                }
+                is FontRepository.InstallResult.Failure -> emitMessage(result.message)
             }
         }
     }
@@ -195,20 +227,57 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             val context = getApplication<Application>().applicationContext
             val status = PrivilegeChecker.check(context)
             _uiState.update { current -> current.copy(privilegeStatus = status) }
-            val dryRun = FontApplyDryRun.run(context, font, status)
 
-            // 当前阶段不再用 UID1000 阻断按钮，用于验证交互链路。
-            // Stub 后端不会触碰系统字体文件、不执行提权、不写系统分区。
-            val applied = backend.apply(font)
-            if (applied) {
-                emitMessage("字体应用完成")
-            } else if (!dryRun.canProceedToRootDryRun) {
-                emitMessage("Dry-run 未通过：${dryRun.checks.firstOrNull { it.endsWith("false") } ?: "后端未接入"}")
-            } else if (status.canApplySystemFont) {
-                emitMessage("已检测到 UID1000，但系统字体应用后端仍是 Stub")
-            } else {
-                emitMessage("已尝试应用；当前未接入非 UID1000 字体应用后端")
+            if (!status.canApplySystemFont) {
+                emitMessage("未检测到 Shizuku UID1000，不能应用系统字体")
+                return@launch
             }
+
+            val targetHash = font.files.firstOrNull()?.sha256
+            if (targetHash.isNullOrBlank()) {
+                emitMessage("字体文件不可用")
+                return@launch
+            }
+
+            if (font.installState == FontInstallState.Imported) {
+                installSelectedFont(font)
+                return@launch
+            }
+
+            val installedFile = FontRepository.findInstalledFile(context, targetHash)
+            val plan = backend.createPlan(
+                fontFamily = font,
+                currentHash = FontRepository.readAppliedHash(context),
+                installedExists = installedFile != null
+            )
+
+            if (plan.noOp) {
+                emitMessage("字体已安装且配置未变化，无需重复应用")
+                return@launch
+            }
+
+            val dryRun = FontApplyDryRun.run(context, font, status)
+            if (!dryRun.canProceedToRootDryRun) {
+                val failed = dryRun.checks.firstOrNull { it.endsWith("false") }.orEmpty()
+                emitMessage("Dry-run 未通过${if (failed.isBlank()) "" else "：$failed"}")
+                return@launch
+            }
+
+            // 当前阶段只记录目标 hash，不写系统分区；真实写入必须接入已授权 Shizuku Binder 后端。
+            FontRepository.markApplied(context, targetHash)
+            refreshFonts()
+            updateDetailByHash(targetHash)
+            emitMessage("字体应用计划已完成：配置切换到目标字体")
+        }
+    }
+
+    private fun updateDetailByHash(hash: String?) {
+        if (hash.isNullOrBlank()) return
+        val updated = FontRepository.fontFamilies.value.firstOrNull {
+            it.files.firstOrNull()?.sha256 == hash
+        }
+        if (updated != null) {
+            _uiState.update { current -> current.copy(screen = Screen.Detail(updated)) }
         }
     }
 
@@ -216,40 +285,24 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         _events.emit(UiEvent.Snackbar(message))
     }
 
-    private fun copyFontToPrivateDir(context: Context, uri: Uri) {
+    private fun copyFontToPrivateDir(context: Context, uri: Uri): FontRepository.ImportResult {
         val displayName = queryDisplayName(context, uri)
             ?: uri.lastPathSegment
             ?: "imported-font"
 
         val resolver = context.contentResolver
-        val extension = FontRepository.findSupportedExtension(displayName)
-            ?: FontRepository.extensionFromMimeType(resolver.getType(uri))
-            ?: "ttf"
-
-        val fontDir = File(context.filesDir, "fonts")
-        if (!fontDir.exists() && !fontDir.mkdirs()) {
-            throw IOException("无法创建字体目录")
-        }
-
-        val safeBaseName = sanitizeFontName(displayName.substringBeforeLast('.', displayName))
-        var targetFile = createUniqueFontFile(fontDir, "$safeBaseName.$extension")
+        val tempFile = File(context.cacheDir, "font-import-${System.nanoTime()}.tmp")
 
         resolver.openInputStream(uri)?.use { input ->
-            targetFile.outputStream().use { output ->
+            tempFile.outputStream().use { output ->
                 input.copyTo(output)
             }
         } ?: throw IOException("无法读取选择的字体文件")
 
-        targetFile = FontRepository.normalizeDetectedExtension(targetFile)
-
-        if (!FontRepository.isValidFontFile(targetFile)) {
-            targetFile.delete()
-            throw IllegalArgumentException("无效字体文件：文件头不是 TTF / OTF / TTC")
-        }
-
-        if (!FontRepository.canPreviewFont(targetFile)) {
-            // 有些有效字体 Android 预览引擎无法加载。文件仍保留在字体库中，详情页会显示回退提示。
-            return
+        return try {
+            FontRepository.importFontFile(context, tempFile, displayName)
+        } finally {
+            tempFile.delete()
         }
     }
 
@@ -264,28 +317,4 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                 }
             } ?: uri.lastPathSegment
     }
-
-    private fun sanitizeFontName(name: String): String {
-        val cleaned = name
-            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            .trim()
-            .take(80)
-
-        return cleaned.ifBlank { "imported-font" }
-    }
-
-    private fun createUniqueFontFile(directory: File, fileName: String): File {
-        val baseName = fileName.substringBeforeLast('.', "imported-font")
-        val extension = fileName.substringAfterLast('.', "ttf")
-        var candidate = File(directory, fileName)
-        var index = 1
-
-        while (candidate.exists()) {
-            candidate = File(directory, "${baseName}_$index.$extension")
-            index += 1
-        }
-
-        return candidate
-    }
-
 }

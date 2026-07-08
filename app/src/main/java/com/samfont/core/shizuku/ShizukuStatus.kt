@@ -1,6 +1,7 @@
 package com.samfont.core.shizuku
 
 enum class ShizukuSource {
+    SYSTEM_UID,
     ROOT,
     ADB_SHELL,
     DENIED,
@@ -17,8 +18,11 @@ data class ShizukuStatus(
     val message: String
 ) {
     val canDryRunAsRoot: Boolean
-        get() = available && permissionGranted && source == ShizukuSource.ROOT
+        get() = available && permissionGranted && (source == ShizukuSource.ROOT || source == ShizukuSource.SYSTEM_UID)
+
+    val canOperateSystemFonts: Boolean
+        get() = available && permissionGranted && source == ShizukuSource.SYSTEM_UID
 
     val canDiagnose: Boolean
-        get() = available && permissionGranted && (source == ShizukuSource.ROOT || source == ShizukuSource.ADB_SHELL)
+        get() = available && permissionGranted && (source == ShizukuSource.ROOT || source == ShizukuSource.SYSTEM_UID || source == ShizukuSource.ADB_SHELL)
 }

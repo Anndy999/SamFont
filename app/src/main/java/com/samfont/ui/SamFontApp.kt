@@ -102,8 +102,9 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
                 FontDetailScreen(
                     modifier = androidx.compose.ui.Modifier.padding(padding),
                     font = screen.font,
+                    canApplySystemFont = uiState.privilegeStatus.canApplySystemFont,
                     onBack = viewModel::goHome,
-                    onApply = { viewModel.applySelectedFont(screen.font) }
+                    onPrimaryAction = { viewModel.handleFontPrimaryAction(screen.font) }
                 )
             }
         }

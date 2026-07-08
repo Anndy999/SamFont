@@ -1,5 +1,6 @@
 package com.samfont.core.shizuku
 
+import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
 
 object ShizukuBridge {
@@ -17,9 +18,10 @@ object ShizukuBridge {
                 )
             }
 
-            val permissionGranted = Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val permissionGranted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
             val uid = runCatching { Shizuku.getUid() }.getOrNull()
             val source = when (uid) {
+                1000 -> ShizukuSource.SYSTEM_UID
                 0 -> ShizukuSource.ROOT
                 2000 -> ShizukuSource.ADB_SHELL
                 null -> ShizukuSource.UNKNOWN
@@ -27,6 +29,7 @@ object ShizukuBridge {
             }
             val message = when {
                 !permissionGranted -> "Shizuku 可用，但未授权"
+                source == ShizukuSource.SYSTEM_UID -> "Shizuku UID1000 模式"
                 source == ShizukuSource.ROOT -> "Shizuku ROOT 模式"
                 source == ShizukuSource.ADB_SHELL -> "Shizuku ADB shell 模式，仅允许诊断"
                 else -> "Shizuku UID: ${uid ?: "未知"}"

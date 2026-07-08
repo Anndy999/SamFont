@@ -32,7 +32,7 @@ object PrivilegeChecker {
         val shizukuStatus = ShizukuBridge.check()
 
         // Android 多用户环境下，UID 由 userId 和 appId 组合而成。
-        // 判断 UID1000 时既比较原始 uid，也比较 UserHandle.getAppId(uid) 的结果。
+        // 这里同时记录 App 自身 UID 和 Shizuku server UID；二者不能混为一谈。
         val candidates = buildList {
             add(UidCandidate(processUid, "Process.myUid()"))
             add(UidCandidate(osUid, "Os.getuid()"))
@@ -52,19 +52,28 @@ object PrivilegeChecker {
         selinuxContext?.let { diagnostics += "SELinux: $it" }
         diagnostics += "Shizuku: uid=${shizukuStatus.uid ?: "未知"}, source=${shizukuStatus.source}"
 
-        val matched = candidates.firstOrNull { isSystemUidCandidate(it.uid) }
-        val selected = matched ?: candidates.first()
+        val matchedAppUid = candidates.firstOrNull { isSystemUidCandidate(it.uid) }
+        val selected = matchedAppUid ?: candidates.first()
         val appId = getAppIdCompat(selected.uid)
-        val isUid1000 = matched != null
+        val isAppUid1000 = matchedAppUid != null
+        val shizukuCanOperate = shizukuStatus.canOperateSystemFonts
 
-        return if (isUid1000) {
+        return if (isAppUid1000 || shizukuCanOperate) {
             PrivilegeStatus(
                 uid = selected.uid,
                 appId = appId,
-                isUid1000 = true,
+                isUid1000 = isAppUid1000,
                 canApplySystemFont = true,
-                title = "UID1000 权限已启用",
-                message = "当前环境支持系统字体应用",
+                title = if (shizukuCanOperate && !isAppUid1000) {
+                    "Shizuku UID1000 已启用"
+                } else {
+                    "UID1000 权限已启用"
+                },
+                message = if (shizukuCanOperate && !isAppUid1000) {
+                    "Shizuku server 支持系统字体操作"
+                } else {
+                    "当前环境支持系统字体应用"
+                },
                 installMode = BuildConfig.INSTALL_MODE,
                 processUid = processUid,
                 osUid = osUid,
@@ -76,7 +85,7 @@ object PrivilegeChecker {
                 selinuxContext = selinuxContext,
                 shizukuStatus = shizukuStatus,
                 diagnostics = diagnostics,
-                detectionSource = selected.source
+                detectionSource = if (shizukuCanOperate && !isAppUid1000) "Shizuku.getUid()" else selected.source
             )
         } else {
             PrivilegeStatus(
@@ -84,8 +93,8 @@ object PrivilegeChecker {
                 appId = appId,
                 isUid1000 = false,
                 canApplySystemFont = false,
-                title = "需要 UID1000 权限",
-                message = "当前环境仅支持字体预览，无法应用系统字体",
+                title = "未授权系统字体操作",
+                message = "当前环境仅支持字体导入和预览，无法应用系统字体",
                 installMode = BuildConfig.INSTALL_MODE,
                 processUid = processUid,
                 osUid = osUid,
@@ -108,7 +117,7 @@ object PrivilegeChecker {
 
     private fun getAppIdCompat(uid: Int): Int {
         return runCatching {
-            // 反射调用保持 UserHandle.getAppId(uid) 语义；失败时按 Android PER_USER_RANGE 回退。
+            // 使用反射保持 UserHandle.getAppId(uid) 语义；失败时按 Android PER_USER_RANGE 回退。
             val method = UserHandle::class.java.getDeclaredMethod(
                 "getAppId",
                 Int::class.javaPrimitiveType
