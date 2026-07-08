@@ -7,7 +7,7 @@ object SamsungFontXmlBuilder {
             appendLine("""<font displayname="${escapeXml(spec.displayName)}">""")
             appendLine("    <sans>")
             appendLine("        <file>${escapeXml(spec.fontFileName)}</file>")
-            appendLine("        <droidname>DroidSans</droidname>")
+            appendLine("        <droidname>${escapeXml(spec.droidName)}</droidname>")
             appendLine("    </sans>")
             appendLine("</font>")
         }

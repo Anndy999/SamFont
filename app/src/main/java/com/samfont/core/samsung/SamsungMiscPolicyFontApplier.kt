@@ -21,16 +21,18 @@ class SamsungMiscPolicyFontApplier {
         return ShizukuBridge.runShell("/system/bin/service call misc_policy 6", timeoutSeconds = 60)
     }
 
-    fun applyFont(displayName: String): ShellResult {
-        // Samsung misc_policy 接收字体显示名，不是 packageName 或文件名。
+    fun applyFont(fontName: String): ShellResult {
+        // misc_policy 实际读取/返回的是 Samsung 字体 XML 中的 droidname/internal name。
         return ShizukuBridge.runShell(
-            "/system/bin/service call misc_policy 5 i32 0 s16 ${ShizukuBridge.shellQuote(displayName)} i32 0",
+            "/system/bin/service call misc_policy 5 i32 0 s16 ${ShizukuBridge.shellQuote(fontName)} i32 0",
             timeoutSeconds = 60
         )
     }
 
-    fun applyAndVerify(displayName: String): AutoApplyResult {
+    fun applyAndVerify(displayName: String, droidName: String): AutoApplyResult {
         val log = StringBuilder()
+        log.appendLine("Font display name: $displayName")
+        log.appendLine("Font droid name: $droidName")
         val support = hasMiscPolicy()
         log.appendLine(support.log)
         if (!support.applied) {
@@ -41,7 +43,7 @@ class SamsungMiscPolicyFontApplier {
             )
         }
 
-        val apply = applyFont(displayName)
+        val apply = applyFont(droidName)
         log.appendLine(formatResult(apply))
         if (!apply.success) {
             return AutoApplyResult(
@@ -54,7 +56,8 @@ class SamsungMiscPolicyFontApplier {
         Thread.sleep(800)
         val current = readCurrentFontRaw()
         log.appendLine(formatResult(current))
-        val verified = current.success && current.stdout.contains(displayName)
+        val verified = current.success &&
+            (current.stdout.contains(droidName) || current.stdout.contains(displayName))
         return AutoApplyResult(
             applied = verified,
             message = if (verified) {

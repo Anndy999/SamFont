@@ -44,7 +44,7 @@ class SamsungFontApkGenerator(
         require(FontRepository.isValidFontFile(fontFile)) { "不是有效字体文件：${fontFile.absolutePath}" }
 
         val hash = fontFileModel.sha256.ifBlank { FontRepository.sha256(fontFile) }
-        val spec = SamsungFontPackageSpec.create(fontFamily.displayName, fontFileModel.fileType)
+        val spec = SamsungFontPackageSpec.create(fontFamily.displayName, fontFileModel.fileType, hash)
         val outputDir = File(context.filesDir, "samsung-packages").apply { mkdirs() }
         val signedApk = File(outputDir, "samfont-generated-$hash.apk")
         val unsignedApk = File(outputDir, "samfont-generated-$hash-unsigned.apk")
@@ -63,6 +63,7 @@ class SamsungFontApkGenerator(
             templateApk = template,
             outputApk = unsignedApk,
             fontFile = fontFile,
+            packageName = spec.packageName,
             fontEntryName = fontEntryName,
             xmlEntryName = xmlEntryName,
             xml = xml
@@ -105,6 +106,7 @@ class SamsungFontApkGenerator(
                 appendLine("Signed APK verified: true")
                 appendLine("Package name: ${spec.packageName}")
                 appendLine("Display name: ${spec.displayName}")
+                appendLine("Droid name: ${spec.droidName}")
                 appendLine("Font entry: $fontEntryName")
                 appendLine("XML entry: $xmlEntryName")
                 appendLine("Source font size: ${fontFile.length()}")
@@ -148,6 +150,7 @@ class SamsungFontApkGenerator(
             templateApk: File,
             outputApk: File,
             fontFile: File,
+            packageName: String = SamsungFontPackageSpec.FIXED_PACKAGE_NAME,
             fontEntryName: String,
             xmlEntryName: String,
             xml: String
@@ -165,6 +168,7 @@ class SamsungFontApkGenerator(
                         }
                         copied += name
                         val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                            .let { if (name == "AndroidManifest.xml") patchManifestPackageName(it, packageName) else it }
                         output.putNextEntry(buildZipEntry(name, entry.time, bytes, entry.method == ZipEntry.STORED || name == "resources.arsc"))
                         output.write(bytes)
                         output.closeEntry()
@@ -210,6 +214,35 @@ class SamsungFontApkGenerator(
             val crc = CRC32()
             crc.update(bytes)
             return crc.value
+        }
+
+        private fun patchManifestPackageName(bytes: ByteArray, packageName: String): ByteArray {
+            if (packageName == SamsungFontPackageSpec.FIXED_PACKAGE_NAME) return bytes
+            require(packageName.length == SamsungFontPackageSpec.FIXED_PACKAGE_NAME.length) {
+                "Generated package name must keep template package length."
+            }
+            val original = SamsungFontPackageSpec.FIXED_PACKAGE_NAME.toByteArray(Charsets.UTF_16LE)
+            val replacement = packageName.toByteArray(Charsets.UTF_16LE)
+            val index = bytes.indexOf(original)
+            require(index >= 0) { "Template manifest package name not found." }
+            return bytes.copyOf().apply {
+                replacement.copyInto(this, destinationOffset = index)
+            }
+        }
+
+        private fun ByteArray.indexOf(pattern: ByteArray): Int {
+            if (pattern.isEmpty() || pattern.size > size) return -1
+            for (index in 0..size - pattern.size) {
+                var matched = true
+                for (offset in pattern.indices) {
+                    if (this[index + offset] != pattern[offset]) {
+                        matched = false
+                        break
+                    }
+                }
+                if (matched) return index
+            }
+            return -1
         }
     }
 }

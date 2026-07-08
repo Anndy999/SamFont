@@ -82,7 +82,10 @@ class SamsungFontPackageBackend(
                     backendLog = shizukuLog + "\n" + generated.log + "\n" + install.log + "\n" + verification.log
                 )
             }
-            val applyResult = fontApplier.applyAndVerify(generated.displayName)
+            val applyResult = fontApplier.applyAndVerify(
+                displayName = generated.displayName,
+                droidName = generated.spec.droidName
+            )
 
             FontApplyResult(
                 success = true,
