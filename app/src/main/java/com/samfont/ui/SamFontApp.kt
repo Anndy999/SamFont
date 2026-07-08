@@ -115,6 +115,8 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
                 FontActionSheet(
                     font = font,
                     canApplySystemFont = uiState.privilegeStatus.canApplySystemFont,
+                    applyMode = uiState.applyMode,
+                    onApplyModeChange = viewModel::setApplyMode,
                     onCancel = viewModel::dismissFontSheet,
                     onPrimaryAction = { viewModel.handleFontPrimaryAction(font) }
                 )

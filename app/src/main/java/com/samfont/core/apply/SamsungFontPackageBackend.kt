@@ -5,6 +5,7 @@ import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import com.samfont.core.privilege.PrivilegeStatus
 import com.samfont.core.samsung.SamsungFontApkGenerator
+import com.samfont.core.samsung.SamsungFontApplyMode
 import com.samfont.core.samsung.SamsungMiscPolicyFontApplier
 import com.samfont.core.samsung.SamsungFontVerifier
 import com.samfont.core.shizuku.install.ShizukuPackageInstaller
@@ -17,7 +18,8 @@ class SamsungFontPackageBackend(
     private val generator: SamsungFontApkGenerator = SamsungFontApkGenerator(context),
     private val installer: ShizukuPackageInstaller = ShizukuShellPackageInstaller(),
     private val verifier: SamsungFontVerifier = SamsungFontVerifier(),
-    private val fontApplier: SamsungMiscPolicyFontApplier = SamsungMiscPolicyFontApplier()
+    private val fontApplier: SamsungMiscPolicyFontApplier = SamsungMiscPolicyFontApplier(),
+    private val applyMode: SamsungFontApplyMode = SamsungFontApplyMode.Auto
 ) : FontApplyBackend {
     override fun getCurrentFont(): String = "Samsung Default"
 
@@ -82,10 +84,7 @@ class SamsungFontPackageBackend(
                     backendLog = shizukuLog + "\n" + generated.log + "\n" + install.log + "\n" + verification.log
                 )
             }
-            val applyResult = fontApplier.applyAndVerify(
-                displayName = generated.displayName,
-                droidName = generated.spec.droidName
-            )
+            val applyResult = fontApplier.applyAndVerify(generated, applyMode)
 
             FontApplyResult(
                 success = true,

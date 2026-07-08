@@ -6,8 +6,10 @@ object SamsungFontXmlBuilder {
             appendLine("""<?xml version="1.0" encoding="utf-8"?>""")
             appendLine("""<font displayname="${escapeXml(spec.displayName)}">""")
             appendLine("    <sans>")
-            appendLine("        <file>${escapeXml(spec.fontFileName)}</file>")
-            appendLine("        <droidname>${escapeXml(spec.droidName)}</droidname>")
+            appendLine("        <file>")
+            appendLine("            <filename>${escapeXml(spec.fontFileName)}</filename>")
+            appendLine("            <droidname>${escapeXml(spec.droidName)}</droidname>")
+            appendLine("        </file>")
             appendLine("    </sans>")
             appendLine("</font>")
         }

@@ -29,10 +29,15 @@ class SamsungMiscPolicyFontApplier {
         )
     }
 
-    fun applyAndVerify(displayName: String, droidName: String): AutoApplyResult {
+    fun applyAndVerify(
+        generatedPackage: SamsungFontGeneratedPackage,
+        mode: SamsungFontApplyMode
+    ): AutoApplyResult {
         val log = StringBuilder()
-        log.appendLine("Font display name: $displayName")
-        log.appendLine("Font droid name: $droidName")
+        log.appendLine("Font display name: ${generatedPackage.displayName}")
+        log.appendLine("Font droid name: ${generatedPackage.spec.droidName}")
+        log.appendLine("Font package name: ${generatedPackage.packageName}")
+        log.appendLine("Font apply mode: ${mode.label}")
         val support = hasMiscPolicy()
         log.appendLine(support.log)
         if (!support.applied) {
@@ -43,30 +48,50 @@ class SamsungMiscPolicyFontApplier {
             )
         }
 
-        val apply = applyFont(droidName)
-        log.appendLine(formatResult(apply))
-        if (!apply.success) {
-            return AutoApplyResult(
-                applied = false,
-                message = "Installed but not applied: misc_policy apply failed",
-                log = log.toString()
-            )
+        val candidates = applyCandidates(generatedPackage, mode)
+        candidates.forEach { candidate ->
+            log.appendLine("Trying misc_policy font value: $candidate")
+            val apply = applyFont(candidate)
+            log.appendLine(formatResult(apply))
+            if (apply.success) {
+                Thread.sleep(800)
+                val current = readCurrentFontRaw()
+                log.appendLine(formatResult(current))
+                if (current.success && current.stdout.contains(candidate)) {
+                    return AutoApplyResult(
+                        applied = true,
+                        message = "Applied",
+                        log = log.toString()
+                    )
+                }
+            }
         }
 
-        Thread.sleep(800)
-        val current = readCurrentFontRaw()
-        log.appendLine(formatResult(current))
-        val verified = current.success &&
-            (current.stdout.contains(droidName) || current.stdout.contains(displayName))
         return AutoApplyResult(
-            applied = verified,
-            message = if (verified) {
-                "Applied"
-            } else {
-                "Installed but not applied: Verification failed"
-            },
+            applied = false,
+            message = "Installed but not applied: Verification failed",
             log = log.toString()
         )
+    }
+
+    private fun applyCandidates(
+        generatedPackage: SamsungFontGeneratedPackage,
+        mode: SamsungFontApplyMode
+    ): List<String> {
+        val fileNameWithoutExtension = generatedPackage.spec.fontFileName.substringBeforeLast('.')
+        val candidates = when (mode) {
+            SamsungFontApplyMode.Auto -> listOf(
+                generatedPackage.spec.droidName,
+                generatedPackage.displayName,
+                generatedPackage.packageName,
+                fileNameWithoutExtension
+            )
+            SamsungFontApplyMode.DroidName -> listOf(generatedPackage.spec.droidName)
+            SamsungFontApplyMode.DisplayName -> listOf(generatedPackage.displayName)
+            SamsungFontApplyMode.PackageName -> listOf(generatedPackage.packageName)
+            SamsungFontApplyMode.FileName -> listOf(fileNameWithoutExtension)
+        }
+        return candidates.map { it.trim() }.filter { it.isNotBlank() }.distinct()
     }
 
     private fun formatResult(result: ShellResult): String {

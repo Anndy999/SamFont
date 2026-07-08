@@ -21,7 +21,7 @@ class SamsungFontXmlBuilderTest {
         val xml = SamsungFontXmlBuilder.build(spec)
 
         assertTrue(xml.contains("中文 &lt;Font&gt; &amp; &quot;Name&quot;"))
-        assertTrue(xml.contains("<file>SamFont.ttf</file>"))
+        assertTrue(xml.contains("<filename>SamFont.ttf</filename>"))
         assertTrue(xml.contains("<droidname>SamFont_test</droidname>"))
         assertFalse(xml.contains("displayname=\"中文 <Font>"))
     }
