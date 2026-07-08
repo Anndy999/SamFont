@@ -1,6 +1,5 @@
 package com.samfont.core.shizuku.install
 
-import com.samfont.core.font.FontRepository
 import com.samfont.core.shizuku.ShellResult
 import com.samfont.core.shizuku.ShizukuBridge
 import java.io.File
@@ -14,49 +13,30 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
             return@withContext ShizukuInstallResult(false, packageName, "APK 文件不存在或为空", "apk=${apk.absolutePath}")
         }
 
-        val hash = FontRepository.sha256(apk).take(16)
-        val remotePath = "/data/local/tmp/samfont-$hash.apk"
-        var result = ShizukuInstallResult(false, packageName, "字体包安装失败", "")
-        try {
-            val copy = ShizukuBridge.writeFileToRemoteTemp(
-                localFile = apk,
-                remotePath = remotePath,
-                timeoutSeconds = 300
-            )
-            appendLog(log, copy)
-            if (!copy.success) {
-                result = ShizukuInstallResult(false, packageName, "APK 写入 Shizuku 临时目录失败", "")
-            } else {
-                val remoteSizeResult = ShizukuBridge.runShell("wc -c ${ShizukuBridge.shellQuote(remotePath)}", timeoutSeconds = 60)
-                appendLog(log, remoteSizeResult)
-                val remoteSize = parseRemoteSize(remoteSizeResult.stdout.ifBlank { remoteSizeResult.stderr })
-                if (!remoteSizeResult.success || remoteSize != apk.length()) {
-                    result = ShizukuInstallResult(false, packageName, "APK 复制不完整", "")
-                } else {
-                    val sessionResult = installWithSession(apk, packageName, remotePath, log)
-                    val retryResult = if (!sessionResult.success && shouldRetryAfterSignatureMismatch(sessionResult.log)) {
-                        appendLog(log, ShizukuBridge.runShell("pm uninstall --user 0 ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 300))
-                        installWithSession(apk, packageName, remotePath, log)
-                    } else {
-                        sessionResult
-                    }
-
-                    result = if (retryResult.success) {
-                        retryResult.copy(log = "")
-                    } else {
-                        appendLog(log, ShizukuBridge.runShell("pm install -r --user 0 ${ShizukuBridge.shellQuote(remotePath)}", timeoutSeconds = 300))
-                        if (verifyInstalled(packageName, log)) {
-                            ShizukuInstallResult(true, packageName, "字体包安装成功", "")
-                        } else {
-                            ShizukuInstallResult(false, packageName, retryResult.message, "")
-                        }
-                    }
-                }
-            }
-        } finally {
-            cleanup(remotePath, log)
+        val firstAttempt = installWithSession(apk, packageName, log)
+        val retryAttempt = if (!firstAttempt.success && shouldRetryAfterSignatureMismatch(firstAttempt.log)) {
+            appendLog(log, ShizukuBridge.runShell("/system/bin/pm uninstall --user 0 ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 300))
+            installWithSession(apk, packageName, log)
+        } else {
+            firstAttempt
         }
-        result.copy(log = log.toString())
+
+        if (!retryAttempt.success) {
+            appendLog(
+                log,
+                ShizukuBridge.runShellWithInput(
+                    command = "/system/bin/pm install -r --user 0 -S ${apk.length()} -",
+                    inputFile = apk,
+                    timeoutSeconds = 300
+                )
+            )
+        }
+
+        return@withContext if (verifyInstalled(packageName, log)) {
+            ShizukuInstallResult(true, packageName, "字体包安装成功", log.toString())
+        } else {
+            ShizukuInstallResult(false, packageName, retryAttempt.message, log.toString())
+        }
     }
 
     override suspend fun isPackageInstalled(packageName: String): Boolean = withContext(Dispatchers.IO) {
@@ -65,7 +45,7 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
     }
 
     override suspend fun uninstallPackage(packageName: String): ShizukuInstallResult = withContext(Dispatchers.IO) {
-        val result = ShizukuBridge.runShell("pm uninstall --user 0 ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 300)
+        val result = ShizukuBridge.runShell("/system/bin/pm uninstall --user 0 ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 300)
         ShizukuInstallResult(
             success = result.success && hasSuccess(result),
             packageName = packageName,
@@ -77,54 +57,46 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
     private fun installWithSession(
         apk: File,
         packageName: String,
-        remotePath: String,
         log: StringBuilder
     ): ShizukuInstallResult {
-        val create = ShizukuBridge.runShell("pm install-create -r --user 0", timeoutSeconds = 300)
+        val create = ShizukuBridge.runShell("/system/bin/pm install-create -r --user 0", timeoutSeconds = 300)
         appendLog(log, create)
         val sessionId = parseSessionId(create.stdout + "\n" + create.stderr)
         if (!create.success || sessionId == null) {
             return ShizukuInstallResult(false, packageName, "Shizuku 安装 session 创建失败", log.toString())
         }
 
-        val write = ShizukuBridge.runShell(
-            "pm install-write -S ${apk.length()} $sessionId base.apk ${ShizukuBridge.shellQuote(remotePath)}",
+        val write = ShizukuBridge.runShellWithInput(
+            command = "/system/bin/pm install-write -S ${apk.length()} $sessionId base.apk -",
+            inputFile = apk,
             timeoutSeconds = 300
         )
         appendLog(log, write)
-        if (!write.success || !hasSuccess(write)) {
-            appendLog(log, ShizukuBridge.runShell("pm install-abandon $sessionId", timeoutSeconds = 60))
+        if (!write.success) {
+            appendLog(log, ShizukuBridge.runShell("/system/bin/pm install-abandon $sessionId", timeoutSeconds = 60))
             return ShizukuInstallResult(false, packageName, "APK 写入 session 失败", log.toString())
         }
 
-        val commit = ShizukuBridge.runShell("pm install-commit $sessionId", timeoutSeconds = 300)
+        val commit = ShizukuBridge.runShell("/system/bin/pm install-commit $sessionId", timeoutSeconds = 300)
         appendLog(log, commit)
         if (!commit.success || !hasSuccess(commit)) {
-            appendLog(log, ShizukuBridge.runShell("pm install-abandon $sessionId", timeoutSeconds = 60))
+            appendLog(log, ShizukuBridge.runShell("/system/bin/pm install-abandon $sessionId", timeoutSeconds = 60))
             return ShizukuInstallResult(false, packageName, "APK commit 失败", log.toString())
         }
 
-        return if (verifyInstalled(packageName, log)) {
-            ShizukuInstallResult(true, packageName, "字体包安装成功", log.toString())
-        } else {
-            ShizukuInstallResult(false, packageName, "安装后 pm list packages 未发现目标包", log.toString())
-        }
+        return ShizukuInstallResult(true, packageName, "字体包安装成功", log.toString())
     }
 
     private fun verifyInstalled(packageName: String, log: StringBuilder): Boolean {
-        val list = ShizukuBridge.runShell("pm list packages ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 60)
+        val list = ShizukuBridge.runShell("/system/bin/pm list packages ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 60)
         appendLog(log, list)
-        val path = ShizukuBridge.runShell("pm path ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 60)
+        val path = ShizukuBridge.runShell("/system/bin/pm path ${ShizukuBridge.shellQuote(packageName)}", timeoutSeconds = 60)
         appendLog(log, path)
 
         return list.success &&
             path.success &&
             list.stdout.lineSequence().any { it.trim() == "package:$packageName" } &&
             path.stdout.lineSequence().any { it.trim().startsWith("package:/data/app/") }
-    }
-
-    private fun cleanup(remotePath: String, log: StringBuilder) {
-        appendLog(log, ShizukuBridge.runShell("rm -f ${ShizukuBridge.shellQuote(remotePath)}", timeoutSeconds = 60))
     }
 
     private fun appendLog(log: StringBuilder, result: ShellResult) {
@@ -155,13 +127,6 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
                 log.contains("signatures do not match", ignoreCase = true) ||
                 log.contains("UPDATE_INCOMPATIBLE", ignoreCase = true) ||
                 log.contains("existing package", ignoreCase = true)
-        }
-
-        fun parseRemoteSize(output: String): Long? {
-            return output.trim()
-                .split(Regex("\\s+"))
-                .firstOrNull()
-                ?.toLongOrNull()
         }
     }
 }

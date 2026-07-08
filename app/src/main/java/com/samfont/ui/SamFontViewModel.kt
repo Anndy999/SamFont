@@ -17,7 +17,6 @@ import com.samfont.core.font.FontRepository
 import com.samfont.core.font.FontState
 import com.samfont.core.privilege.PrivilegeChecker
 import com.samfont.core.privilege.PrivilegeStatus
-import com.samfont.core.samsung.SamsungFontVerifier
 import com.samfont.core.shizuku.ShizukuBridge
 import com.samfont.core.update.UpdateInstaller
 import com.samfont.core.update.UpdateRepository
@@ -248,24 +247,14 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             FontState.Imported,
             FontState.Cached,
             FontState.PackageGenerated,
-            FontState.Failed,
-            FontState.SystemInstalled -> installOrOpenSettings(font)
+            FontState.Failed -> installSamsungFontPackage(font)
+            FontState.SystemInstalled -> viewModelScope.launch { emitMessage("字体包已安装，等待识别系统字体切换 key") }
             FontState.Applied -> viewModelScope.launch { emitMessage("当前已应用该字体") }
             FontState.Generating,
             FontState.Installing,
             FontState.Applying,
             FontState.Broken -> viewModelScope.launch { emitMessage("当前状态不可操作") }
         }
-    }
-
-    private fun installOrOpenSettings(font: FontFamilyModel) {
-        if (font.state == FontState.SystemInstalled) {
-            val context = getApplication<Application>().applicationContext
-            context.startActivity(SamsungFontVerifier().openSamsungFontSettingsIntent(context))
-            viewModelScope.launch { emitMessage("请在 Samsung 系统字体设置中选择该字体") }
-            return
-        }
-        installSamsungFontPackage(font)
     }
 
     private fun installSamsungFontPackage(font: FontFamilyModel) {

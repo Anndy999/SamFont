@@ -1,6 +1,7 @@
 package com.samfont.core.samsung
 
 import android.content.Context
+import com.android.apksig.ApkVerifier
 import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import java.io.File
@@ -35,27 +36,15 @@ class SamsungFontApkGenerator(
         val spec = SamsungFontPackageSpec.create(fontFamily.displayName, fontFileModel.fileType)
         val outputDir = File(context.filesDir, "samsung-packages").apply { mkdirs() }
         val signedApk = File(outputDir, "samfont-generated-$hash.apk")
+        val unsignedApk = File(outputDir, "samfont-generated-$hash-unsigned.apk")
         val fontEntryName = "assets/fonts/${spec.fontFileName}"
         val xmlEntryName = "assets/xml/${spec.fontXmlName}"
-        if (signedApk.exists() && signedApk.length() > 0) {
-            validateGeneratedApk(
-                signedApk = signedApk,
-                sourceFont = fontFile,
-                fontEntryName = fontEntryName,
-                xmlEntryName = xmlEntryName
-            )
-            return SamsungFontGeneratedPackage(
-                apk = signedApk,
-                spec = spec,
-                reused = true,
-                log = "Reused generated APK: ${signedApk.absolutePath}"
-            )
-        }
+        signedApk.delete()
+        unsignedApk.delete()
 
         val template = copyTemplateApk(outputDir)
         val templatePath = template.absolutePath
         val templateSize = template.length()
-        val unsignedApk = File(outputDir, "samfont-generated-$hash-unsigned.apk")
         val xml = SamsungFontXmlBuilder.build(spec)
         rewriteTemplateApk(
             templateApk = template,
@@ -84,6 +73,7 @@ class SamsungFontApkGenerator(
                 appendLine("Template APK size: $templateSize")
                 appendLine("Signed APK path: ${signedApk.absolutePath}")
                 appendLine("Signed APK size: ${signedApk.length()}")
+                appendLine("Signed APK verified: true")
                 appendLine("Package name: ${spec.packageName}")
                 appendLine("Display name: ${spec.displayName}")
                 appendLine("Font entry: $fontEntryName")
@@ -120,6 +110,8 @@ class SamsungFontApkGenerator(
                     throw IllegalStateException("生成 APK 字体文件大小不一致")
                 }
             }
+            val result = ApkVerifier.Builder(signedApk).build().verify()
+            require(result.isVerified) { "生成 APK 签名验证失败" }
         }
 
         fun rewriteTemplateApk(

@@ -77,7 +77,7 @@ fun FontActionSheet(
         FontState.Cached,
         FontState.PackageGenerated,
         FontState.Failed -> canApplySystemFont
-        FontState.SystemInstalled -> true
+        FontState.SystemInstalled -> false
         FontState.Generating,
         FontState.Installing,
         FontState.Applying,
@@ -251,7 +251,7 @@ private fun primaryButtonText(state: FontState): String = when (state) {
     FontState.Cached,
     FontState.Failed -> "Generate Fonts"
     FontState.PackageGenerated -> "Install with Shizuku"
-    FontState.SystemInstalled -> "Open Samsung Font Settings"
+    FontState.SystemInstalled -> "System Installed"
     FontState.Applied -> "Current font"
     FontState.Generating -> "Generating"
     FontState.Installing -> "Installing"

@@ -5,6 +5,7 @@ import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import com.samfont.core.privilege.PrivilegeStatus
 import com.samfont.core.samsung.SamsungFontApkGenerator
+import com.samfont.core.samsung.SamsungFontSwitcher
 import com.samfont.core.samsung.SamsungFontVerifier
 import com.samfont.core.shizuku.install.ShizukuPackageInstaller
 import com.samfont.core.shizuku.install.ShizukuShellPackageInstaller
@@ -15,7 +16,8 @@ class SamsungFontPackageBackend(
     private val privilegeStatus: PrivilegeStatus,
     private val generator: SamsungFontApkGenerator = SamsungFontApkGenerator(context),
     private val installer: ShizukuPackageInstaller = ShizukuShellPackageInstaller(),
-    private val verifier: SamsungFontVerifier = SamsungFontVerifier()
+    private val verifier: SamsungFontVerifier = SamsungFontVerifier(),
+    private val switcher: SamsungFontSwitcher = SamsungFontSwitcher()
 ) : FontApplyBackend {
     override fun getCurrentFont(): String = "Samsung Default"
 
@@ -79,17 +81,20 @@ class SamsungFontPackageBackend(
                     backendLog = shizukuLog + "\n" + generated.log + "\n" + install.log + "\n" + verification.log
                 )
             }
+            val switchResult = switcher.tryApplyInstalledFont(generated.spec.packageName)
 
             FontApplyResult(
                 success = true,
-                message = "字体包已安装，请在 Samsung 系统字体设置中选择该字体。",
+                message = switchResult.message,
                 backendLog = buildString {
                     appendLine(shizukuLog)
                     appendLine(generated.log)
                     appendLine(install.log)
                     appendLine(verification.log)
+                    appendLine(switchResult.log)
                     appendLine("visibleToSamsung=${verification.visibleToSamsung}")
                     appendLine("currentlyApplied=${verification.currentlyApplied}")
+                    appendLine("autoApplied=${switchResult.applied}")
                 }
             )
         }.getOrElse { throwable ->

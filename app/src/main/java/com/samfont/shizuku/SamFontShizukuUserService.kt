@@ -31,7 +31,6 @@ class SamFontShizukuUserService : ISamFontShizukuService.Stub() {
         val targets = listOf(
             "/system/fonts",
             "/product/fonts",
-            "/data/local/tmp",
             "/sdcard"
         )
 

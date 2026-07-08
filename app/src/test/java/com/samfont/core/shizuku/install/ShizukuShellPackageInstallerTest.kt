@@ -22,11 +22,4 @@ class ShizukuShellPackageInstallerTest {
         assertTrue(ShizukuShellPackageInstaller.shouldRetryAfterSignatureMismatch("existing package"))
         assertFalse(ShizukuShellPackageInstaller.shouldRetryAfterSignatureMismatch("INSTALL_FAILED_INVALID_APK"))
     }
-
-    @Test
-    fun parsesRemoteSize() {
-        assertEquals(12345L, ShizukuShellPackageInstaller.parseRemoteSize("12345 /data/local/tmp/a.apk"))
-        assertEquals(12345L, ShizukuShellPackageInstaller.parseRemoteSize("12345"))
-        assertNull(ShizukuShellPackageInstaller.parseRemoteSize("abc"))
-    }
 }

@@ -4,6 +4,7 @@ import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object ShizukuBridge {
@@ -80,31 +81,12 @@ object ShizukuBridge {
         return runShell(commands.joinToString("\n"), timeoutSeconds)
     }
 
-    fun writeFileToRemoteTemp(
-        localFile: File,
-        remotePath: String,
+    fun runShellWithInput(
+        command: String,
+        inputFile: File,
         timeoutSeconds: Long = 300
     ): ShellResult {
-        val write = runRemoteProcess("cat > ${shellQuote(remotePath)}", localFile, timeoutSeconds)
-        if (!write.success) return write
-        val chmod = runShell("chmod 644 ${shellQuote(remotePath)}", timeoutSeconds)
-        return ShellResult(
-            exitCode = chmod.exitCode,
-            stdout = buildString {
-                appendLine("write.exitCode=${write.exitCode}")
-                if (write.stdout.isNotBlank()) appendLine("write.stdout:\n${write.stdout.trim()}")
-                appendLine("chmod.exitCode=${chmod.exitCode}")
-                if (chmod.stdout.isNotBlank()) appendLine("chmod.stdout:\n${chmod.stdout.trim()}")
-            },
-            stderr = buildString {
-                if (write.stderr.isNotBlank()) appendLine("write.stderr:\n${write.stderr.trim()}")
-                if (chmod.stderr.isNotBlank()) appendLine("chmod.stderr:\n${chmod.stderr.trim()}")
-            },
-            command = buildString {
-                appendLine(write.command)
-                append(chmod.command)
-            }
-        )
+        return runRemoteProcess(command, inputFile, timeoutSeconds)
     }
 
     private fun runRemoteProcess(
@@ -119,40 +101,81 @@ object ShizukuBridge {
             return ShellResult(-1, "", "Shizuku 未授权", command)
         }
 
+        val stdout = ByteArrayOutputStream()
+        val stderr = ByteArrayOutputStream()
+        val stdinErrors = StringBuilder()
+        val process = runCatching {
+            newRemoteProcess(arrayOf("/system/bin/sh", "-c", command))
+        }.getOrElse { throwable ->
+            return ShellResult(-1, "", throwable.stackTraceToString(), command)
+        }
+
         return runCatching {
-            val process = newRemoteProcess(arrayOf("sh", "-c", command))
-            val stdout = ByteArrayOutputStream()
-            val stderr = ByteArrayOutputStream()
             val outThread = Thread { process.inputStream.use { it.copyTo(stdout) } }
             val errThread = Thread { process.errorStream.use { it.copyTo(stderr) } }
             outThread.start()
             errThread.start()
 
-            process.outputStream.use { output ->
-                stdinFile?.inputStream()?.use { input -> input.copyTo(output) }
+            try {
+                process.outputStream.use { output ->
+                    stdinFile?.inputStream()?.use { input -> input.copyTo(output) }
+                }
+            } catch (exception: IOException) {
+                stdinErrors.appendLine("stdin write failed: ${exception.message}")
+                stdinErrors.appendLine(exception.stackTraceToString())
+            } catch (exception: IllegalArgumentException) {
+                stdinErrors.appendLine("stdin write failed: ${exception.message}")
+                stdinErrors.appendLine(exception.stackTraceToString())
+            } catch (exception: IllegalThreadStateException) {
+                stdinErrors.appendLine("stdin write failed: ${exception.message}")
+                stdinErrors.appendLine(exception.stackTraceToString())
             }
 
             val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroy()
-                return ShellResult(-1, stdout.toString(), "命令超时", command)
+                outThread.join(3_000)
+                errThread.join(3_000)
+                return ShellResult(
+                    exitCode = -1,
+                    stdout = stdout.toString(Charsets.UTF_8.name()),
+                    stderr = buildString {
+                        appendLine("timeout after ${timeoutSeconds}s")
+                        if (stdinErrors.isNotBlank()) append(stdinErrors)
+                        val processStderr = stderr.toString(Charsets.UTF_8.name())
+                        if (processStderr.isNotBlank()) append(processStderr)
+                    },
+                    command = command
+                )
             }
-            outThread.join(1_000)
-            errThread.join(1_000)
+            outThread.join(3_000)
+            errThread.join(3_000)
             val exitCode = runCatching { process.exitValue() }
                 .getOrElse {
-                    // ShizukuRemoteProcess 在部分设备上 waitFor(timeout) 后仍可能让 exitValue() 抛出
-                    // "process hasn't exited"。此时再执行无参 waitFor() 获取最终退出码。
-                    process.waitFor()
+                    stdinErrors.appendLine("exitValue failed: ${it.message}")
+                    stdinErrors.appendLine(it.stackTraceToString())
+                    -1
                 }
             ShellResult(
                 exitCode = exitCode,
                 stdout = stdout.toString(Charsets.UTF_8.name()),
-                stderr = stderr.toString(Charsets.UTF_8.name()),
+                stderr = buildString {
+                    if (stdinErrors.isNotBlank()) append(stdinErrors)
+                    val processStderr = stderr.toString(Charsets.UTF_8.name())
+                    if (processStderr.isNotBlank()) append(processStderr)
+                },
                 command = command
             )
         }.getOrElse { throwable ->
-            ShellResult(-1, "", throwable.stackTraceToString(), command)
+            ShellResult(
+                exitCode = -1,
+                stdout = stdout.toString(Charsets.UTF_8.name()),
+                stderr = buildString {
+                    if (stdinErrors.isNotBlank()) append(stdinErrors)
+                    append(throwable.stackTraceToString())
+                },
+                command = command
+            )
         }
     }
 
