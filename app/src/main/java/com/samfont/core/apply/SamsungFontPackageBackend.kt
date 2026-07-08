@@ -60,15 +60,6 @@ class SamsungFontPackageBackend(
             return FontApplyResult(false, "字体文件无效。", fontFile.absolutePath)
         }
 
-        val shellCheck = com.samfont.core.shizuku.ShizukuBridge.runShell("pm path android >/dev/null && pm list packages android")
-        if (!shellCheck.success) {
-            return FontApplyResult(
-                success = false,
-                message = "Shizuku shell 无法执行 pm 命令。",
-                backendLog = shizukuLog + "\n" + formatShellCheck(shellCheck.command, shellCheck.exitCode, shellCheck.stdout, shellCheck.stderr)
-            )
-        }
-
         return runCatching {
             val generated = generator.generate(fontFamily)
             val install = installer.installApk(generated.apk, generated.spec.packageName)
@@ -112,15 +103,6 @@ class SamsungFontPackageBackend(
 
     override fun rollback(): FontApplyResult {
         return FontApplyResult(false, "Samsung 字体回滚后端尚未实现。", "Rollback refused.")
-    }
-
-    private fun formatShellCheck(command: String, exitCode: Int, stdout: String, stderr: String): String {
-        return buildString {
-            appendLine("$ $command")
-            appendLine("exitCode=$exitCode")
-            if (stdout.isNotBlank()) appendLine("stdout:\n$stdout")
-            if (stderr.isNotBlank()) appendLine("stderr:\n$stderr")
-        }
     }
 
     private fun buildShizukuLog(): String {

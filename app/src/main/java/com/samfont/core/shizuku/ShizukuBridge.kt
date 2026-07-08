@@ -139,14 +139,20 @@ object ShizukuBridge {
             }
             outThread.join(1_000)
             errThread.join(1_000)
+            val exitCode = runCatching { process.exitValue() }
+                .getOrElse {
+                    // ShizukuRemoteProcess 在部分设备上 waitFor(timeout) 后仍可能让 exitValue() 抛出
+                    // "process hasn't exited"。此时再执行无参 waitFor() 获取最终退出码。
+                    process.waitFor()
+                }
             ShellResult(
-                exitCode = process.exitValue(),
+                exitCode = exitCode,
                 stdout = stdout.toString(Charsets.UTF_8.name()),
                 stderr = stderr.toString(Charsets.UTF_8.name()),
                 command = command
             )
         }.getOrElse { throwable ->
-            ShellResult(-1, "", throwable.message ?: throwable.toString(), command)
+            ShellResult(-1, "", throwable.stackTraceToString(), command)
         }
     }
 
