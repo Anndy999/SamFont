@@ -6,16 +6,27 @@ import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 data class SamsungFontGeneratedPackage(
-    val apk: File,
+    val apkFile: File,
     val spec: SamsungFontPackageSpec,
+    val fontEntry: String,
+    val xmlEntry: String,
+    val sourceFontSha256: String,
     val reused: Boolean,
     val log: String
-)
+) {
+    val apk: File
+        get() = apkFile
+    val packageName: String
+        get() = spec.packageName
+    val displayName: String
+        get() = spec.displayName
+}
 
 interface ApkSigner {
     fun sign(unsignedApk: File, signedApk: File)
@@ -37,10 +48,12 @@ class SamsungFontApkGenerator(
         val outputDir = File(context.filesDir, "samsung-packages").apply { mkdirs() }
         val signedApk = File(outputDir, "samfont-generated-$hash.apk")
         val unsignedApk = File(outputDir, "samfont-generated-$hash-unsigned.apk")
+        val alignedApk = File(outputDir, "samfont-generated-$hash-aligned.apk")
         val fontEntryName = "assets/fonts/${spec.fontFileName}"
         val xmlEntryName = "assets/xml/${spec.fontXmlName}"
         signedApk.delete()
         unsignedApk.delete()
+        alignedApk.delete()
 
         val template = copyTemplateApk(outputDir)
         val templatePath = template.absolutePath
@@ -54,25 +67,41 @@ class SamsungFontApkGenerator(
             xmlEntryName = xmlEntryName,
             xml = xml
         )
-        signer.sign(unsignedApk, signedApk)
+        val unsignedResourceCheck = ApkStructureVerifier.checkResourcesArsc(unsignedApk)
+        val alignedResourceCheck = ZipAligner.align(unsignedApk, alignedApk)
+        signer.sign(alignedApk, signedApk)
+        val signedResourceCheck = ApkStructureVerifier.requireValidResourcesArsc(signedApk)
         validateGeneratedApk(
             signedApk = signedApk,
             sourceFont = fontFile,
             fontEntryName = fontEntryName,
             xmlEntryName = xmlEntryName
         )
+        val unsignedSize = unsignedApk.length()
+        val alignedSize = alignedApk.length()
         unsignedApk.delete()
+        alignedApk.delete()
         template.delete()
 
         return SamsungFontGeneratedPackage(
-            apk = signedApk,
+            apkFile = signedApk,
             spec = spec,
+            fontEntry = fontEntryName,
+            xmlEntry = xmlEntryName,
+            sourceFontSha256 = hash,
             reused = false,
             log = buildString {
                 appendLine("Template APK path: $templatePath")
                 appendLine("Template APK size: $templateSize")
+                appendLine("Unsigned APK path: ${unsignedApk.absolutePath}")
+                appendLine("Unsigned APK size: $unsignedSize")
+                append(unsignedResourceCheck.toLog("resources.arsc before zipalign:"))
+                appendLine("Aligned APK path: ${alignedApk.absolutePath}")
+                appendLine("Aligned APK size: $alignedSize")
+                append(alignedResourceCheck.toLog("resources.arsc before signing:"))
                 appendLine("Signed APK path: ${signedApk.absolutePath}")
                 appendLine("Signed APK size: ${signedApk.length()}")
+                append(signedResourceCheck.toLog("resources.arsc after signing:"))
                 appendLine("Signed APK verified: true")
                 appendLine("Package name: ${spec.packageName}")
                 appendLine("Display name: ${spec.displayName}")
@@ -110,6 +139,7 @@ class SamsungFontApkGenerator(
                     throw IllegalStateException("生成 APK 字体文件大小不一致")
                 }
             }
+            ApkStructureVerifier.requireValidResourcesArsc(signedApk)
             val result = ApkVerifier.Builder(signedApk).build().verify()
             require(result.isVerified) { "生成 APK 签名验证失败" }
         }
@@ -134,8 +164,9 @@ class SamsungFontApkGenerator(
                             return@forEach
                         }
                         copied += name
-                        output.putNextEntry(ZipEntry(name).apply { time = entry.time })
-                        zip.getInputStream(entry).use { it.copyTo(output) }
+                        val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                        output.putNextEntry(buildZipEntry(name, entry.time, bytes, entry.method == ZipEntry.STORED || name == "resources.arsc"))
+                        output.write(bytes)
                         output.closeEntry()
                     }
 
@@ -143,15 +174,42 @@ class SamsungFontApkGenerator(
                         output.putNextEntry(ZipEntry("assets/fonts/"))
                         output.closeEntry()
                     }
-                    output.putNextEntry(ZipEntry(fontEntryName))
-                    fontFile.inputStream().use { it.copyTo(output) }
+                    val fontBytes = fontFile.readBytes()
+                    output.putNextEntry(buildZipEntry(fontEntryName, System.currentTimeMillis(), fontBytes, forceStored = false))
+                    output.write(fontBytes)
                     output.closeEntry()
 
-                    output.putNextEntry(ZipEntry(xmlEntryName))
-                    output.write(xml.toByteArray(Charsets.UTF_8))
+                    val xmlBytes = xml.toByteArray(Charsets.UTF_8)
+                    output.putNextEntry(buildZipEntry(xmlEntryName, System.currentTimeMillis(), xmlBytes, forceStored = false))
+                    output.write(xmlBytes)
                     output.closeEntry()
                 }
             }
+        }
+
+        private fun buildZipEntry(
+            name: String,
+            time: Long,
+            bytes: ByteArray,
+            forceStored: Boolean
+        ): ZipEntry {
+            return ZipEntry(name).apply {
+                this.time = time
+                if (forceStored) {
+                    method = ZipEntry.STORED
+                    size = bytes.size.toLong()
+                    compressedSize = bytes.size.toLong()
+                    crc = crc32(bytes)
+                } else {
+                    method = ZipEntry.DEFLATED
+                }
+            }
+        }
+
+        private fun crc32(bytes: ByteArray): Long {
+            val crc = CRC32()
+            crc.update(bytes)
+            return crc.value
         }
     }
 }

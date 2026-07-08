@@ -48,12 +48,13 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
         packageName: String,
         log: StringBuilder
     ): ShizukuInstallResult {
-        val create = ShizukuBridge.runShell("/system/bin/pm install-create -r --user 0", timeoutSeconds = 300)
+        val create = ShizukuBridge.runShell("/system/bin/pm install-create -r --user 0 -S ${apk.length()}", timeoutSeconds = 300)
         appendLog(log, create)
         val sessionId = parseSessionId(create.stdout + "\n" + create.stderr)
         if (!create.success || sessionId == null) {
             return ShizukuInstallResult(false, packageName, "Shizuku 安装 session 创建失败", log.toString())
         }
+        log.appendLine("Install session id: $sessionId")
 
         val write = ShizukuBridge.runShellWithInput(
             command = "/system/bin/pm install-write -S ${apk.length()} $sessionId base.apk -",
@@ -69,7 +70,6 @@ class ShizukuShellPackageInstaller : ShizukuPackageInstaller {
         val commit = ShizukuBridge.runShell("/system/bin/pm install-commit $sessionId", timeoutSeconds = 300)
         appendLog(log, commit)
         if (!commit.success || !hasSuccess(commit)) {
-            appendLog(log, ShizukuBridge.runShell("/system/bin/pm install-abandon $sessionId", timeoutSeconds = 60))
             return ShizukuInstallResult(false, packageName, "APK commit 失败", log.toString())
         }
 

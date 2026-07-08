@@ -173,6 +173,7 @@ object FontRepository {
             val displayName = metadata.fullName ?: metadata.familyName ?: file.nameWithoutExtension.ifBlank { file.name }
             val actualState = when {
                 !file.exists() -> FontState.Broken
+                hash == appliedHash && state == FontState.SystemInstalled -> FontState.Applied
                 else -> state
             }
             val id = if (ttcIndex != null) "$hash#$ttcIndex" else hash

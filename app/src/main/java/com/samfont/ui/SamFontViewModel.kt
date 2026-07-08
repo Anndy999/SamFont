@@ -305,15 +305,21 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             _uiState.update { current -> current.copy(latestBackendLog = result.backendLog.orEmpty()) }
             if (result.success) {
                 val cached = withContext(Dispatchers.IO) { FontRepository.installFont(context, font) }
+                if (result.applied && targetHash.isNotBlank()) {
+                    withContext(Dispatchers.IO) { FontRepository.markApplied(context, targetHash) }
+                }
                 refreshFonts()
                 val updated = when (cached) {
                     is FontRepository.InstallResult.Success -> cached.font
                     is FontRepository.InstallResult.Failure -> null
                 }
+                val selected = FontRepository.fontFamilies.value.firstOrNull { family ->
+                    family.files.firstOrNull()?.sha256 == targetHash
+                } ?: updated
                 _uiState.update { current ->
                     current.copy(
                         selectedTab = MainTab.Installed,
-                        selectedFontSheet = updated ?: current.selectedFontSheet
+                        selectedFontSheet = selected ?: current.selectedFontSheet
                     )
                 }
             }

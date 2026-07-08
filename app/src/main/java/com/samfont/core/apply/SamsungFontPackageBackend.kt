@@ -5,7 +5,7 @@ import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontRepository
 import com.samfont.core.privilege.PrivilegeStatus
 import com.samfont.core.samsung.SamsungFontApkGenerator
-import com.samfont.core.samsung.SamsungFontSwitcher
+import com.samfont.core.samsung.SamsungMiscPolicyFontApplier
 import com.samfont.core.samsung.SamsungFontVerifier
 import com.samfont.core.shizuku.install.ShizukuPackageInstaller
 import com.samfont.core.shizuku.install.ShizukuShellPackageInstaller
@@ -17,7 +17,7 @@ class SamsungFontPackageBackend(
     private val generator: SamsungFontApkGenerator = SamsungFontApkGenerator(context),
     private val installer: ShizukuPackageInstaller = ShizukuShellPackageInstaller(),
     private val verifier: SamsungFontVerifier = SamsungFontVerifier(),
-    private val switcher: SamsungFontSwitcher = SamsungFontSwitcher()
+    private val fontApplier: SamsungMiscPolicyFontApplier = SamsungMiscPolicyFontApplier()
 ) : FontApplyBackend {
     override fun getCurrentFont(): String = "Samsung Default"
 
@@ -64,7 +64,8 @@ class SamsungFontPackageBackend(
 
         return runCatching {
             val generated = generator.generate(fontFamily)
-            val install = installer.installApk(generated.apk, generated.spec.packageName)
+            val structure = com.samfont.core.samsung.ApkStructureVerifier.requireValidResourcesArsc(generated.apk)
+            val install = installer.installApk(generated.apk, generated.packageName)
             if (!install.success) {
                 return FontApplyResult(
                     success = false,
@@ -73,7 +74,7 @@ class SamsungFontPackageBackend(
                 )
             }
 
-            val verification = verifier.verifyPackageInstalled(generated.spec.packageName)
+            val verification = verifier.verifyPackageInstalled(generated.packageName)
             if (!verification.installed) {
                 return FontApplyResult(
                     success = false,
@@ -81,21 +82,23 @@ class SamsungFontPackageBackend(
                     backendLog = shizukuLog + "\n" + generated.log + "\n" + install.log + "\n" + verification.log
                 )
             }
-            val switchResult = switcher.tryApplyInstalledFont(generated.spec.packageName)
+            val applyResult = fontApplier.applyAndVerify(generated.displayName)
 
             FontApplyResult(
                 success = true,
-                message = switchResult.message,
+                message = applyResult.message,
                 backendLog = buildString {
                     appendLine(shizukuLog)
                     appendLine(generated.log)
+                    append(structure.toLog("resources.arsc install precheck:"))
                     appendLine(install.log)
                     appendLine(verification.log)
-                    appendLine(switchResult.log)
+                    appendLine(applyResult.log)
                     appendLine("visibleToSamsung=${verification.visibleToSamsung}")
                     appendLine("currentlyApplied=${verification.currentlyApplied}")
-                    appendLine("autoApplied=${switchResult.applied}")
-                }
+                    appendLine("autoApplied=${applyResult.applied}")
+                },
+                applied = applyResult.applied
             )
         }.getOrElse { throwable ->
             FontApplyResult(

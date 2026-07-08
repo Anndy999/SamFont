@@ -16,5 +16,6 @@ data class FontApplyPlan(
 data class FontApplyResult(
     val success: Boolean,
     val message: String,
-    val backendLog: String? = null
+    val backendLog: String? = null,
+    val applied: Boolean = false
 )

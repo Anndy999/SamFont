@@ -12,8 +12,8 @@ android {
         applicationId = "com.samfont"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10306
-        versionName = "1.3.6"
+        versionCode = 10307
+        versionName = "1.3.7"
     }
 
     flavorDimensions += "installMode"
@@ -65,6 +65,10 @@ val copyFontTemplateApk by tasks.registering(Copy::class) {
 }
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(copyFontTemplateApk)
+}
+
+tasks.matching { it.name.startsWith("generate") && it.name.endsWith("LintVitalReportModel") }.configureEach {
     dependsOn(copyFontTemplateApk)
 }
 
