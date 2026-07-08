@@ -1,4 +1,4 @@
-package com.samfont.ui
+﻿package com.samfont.ui
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -65,11 +65,19 @@ fun FontActionSheet(
     }
     val previewFamily = remember(typeface) { typeface?.let { FontFamily(it) } ?: FontFamily.Default }
     val fileExists = previewFile?.path?.let { File(it).exists() } == true
+    val needsShizukuInstall = when (font.state) {
+        FontState.Imported,
+        FontState.Cached,
+        FontState.PackageGenerated,
+        FontState.Failed -> true
+        else -> false
+    }
     val buttonEnabled = when (font.state) {
         FontState.Imported,
-        FontState.Generated,
-        FontState.Failed -> true
-        FontState.SystemInstalled -> canApplySystemFont
+        FontState.Cached,
+        FontState.PackageGenerated,
+        FontState.Failed -> canApplySystemFont
+        FontState.SystemInstalled -> true
         FontState.Generating,
         FontState.Installing,
         FontState.Applying,
@@ -83,12 +91,11 @@ fun FontActionSheet(
             .padding(horizontal = 24.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Variable Font", style = MaterialTheme.typography.headlineMedium)
         Text(
-            text = font.displayName,
-            style = MaterialTheme.typography.titleMedium,
-            color = SamFontColors.TextSecondary
+            text = if (font.isVariableFont) "Variable Font" else "Font",
+            style = MaterialTheme.typography.headlineMedium
         )
+        Text(text = font.displayName, style = MaterialTheme.typography.titleMedium, color = SamFontColors.TextSecondary)
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -124,7 +131,7 @@ fun FontActionSheet(
             Text(text = "900", color = SamFontColors.TextSecondary)
         }
         Text(
-            text = "Bold auto-generated at: $selectedWeight · ${weightLabel(selectedWeight)}",
+            text = "Bold auto-generated at: $selectedWeight - ${weightLabel(selectedWeight)}",
             style = MaterialTheme.typography.titleMedium
         )
 
@@ -175,15 +182,19 @@ fun FontActionSheet(
             )
         }
 
-        HorizontalDivider(color = SamFontColors.Divider)
-
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onCancel
-        ) {
-            Text(text = "Cancel")
+        if (needsShizukuInstall && !canApplySystemFont) {
+            Text(
+                text = "Shizuku is not authorized or not running. Font package installation is disabled.",
+                color = SamFontColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
 
+        HorizontalDivider(color = SamFontColors.Divider)
+
+        OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onCancel) {
+            Text(text = "Cancel")
+        }
         Button(
             modifier = Modifier.fillMaxWidth(),
             enabled = buttonEnabled,
@@ -204,11 +215,8 @@ private fun AxisControls(
 ) {
     val standardAxes = axes.filter { it.standard }
     val customAxes = axes.filterNot { it.standard }
-
-    if (standardAxes.isNotEmpty()) {
-        standardAxes.forEach { axis ->
-            AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
-        }
+    standardAxes.forEach { axis ->
+        AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
     }
     if (customAxes.isNotEmpty()) {
         Text(text = "Advanced axes", style = MaterialTheme.typography.titleMedium)
@@ -216,9 +224,7 @@ private fun AxisControls(
             AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
         }
     }
-    OutlinedButton(onClick = onReset) {
-        Text(text = "Restore default")
-    }
+    OutlinedButton(onClick = onReset) { Text(text = "Restore default") }
 }
 
 @Composable
@@ -242,10 +248,11 @@ private fun AxisSlider(
 
 private fun primaryButtonText(state: FontState): String = when (state) {
     FontState.Imported,
+    FontState.Cached,
     FontState.Failed -> "Generate Fonts"
-    FontState.Generated -> "Install"
-    FontState.SystemInstalled -> "Apply"
-    FontState.Applied -> "Current applied"
+    FontState.PackageGenerated -> "Install with Shizuku"
+    FontState.SystemInstalled -> "Open Samsung Font Settings"
+    FontState.Applied -> "Current font"
     FontState.Generating -> "Generating"
     FontState.Installing -> "Installing"
     FontState.Applying -> "Applying"

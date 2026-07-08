@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SamFont"
 include(":app")
+include(":fonttemplate")

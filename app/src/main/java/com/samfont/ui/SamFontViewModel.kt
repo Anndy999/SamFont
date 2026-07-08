@@ -15,6 +15,7 @@ import com.samfont.core.font.FontRepository
 import com.samfont.core.font.FontState
 import com.samfont.core.privilege.PrivilegeChecker
 import com.samfont.core.privilege.PrivilegeStatus
+import com.samfont.core.samsung.SamsungFontVerifier
 import com.samfont.core.shizuku.ShizukuBridge
 import com.samfont.core.update.UpdateInstaller
 import com.samfont.core.update.UpdateRepository
@@ -51,7 +52,12 @@ data class SamFontUiState(
         get() = fonts.filter { it.state == FontState.SystemInstalled || it.state == FontState.Applied }
 
     val availableFonts: List<FontFamilyModel>
-        get() = fonts.filter { it.state == FontState.Imported || it.state == FontState.Generated || it.state == FontState.Failed }
+        get() = fonts.filter {
+            it.state == FontState.Imported ||
+                it.state == FontState.Cached ||
+                it.state == FontState.PackageGenerated ||
+                it.state == FontState.Failed
+        }
 
     val appliedFont: FontFamilyModel?
         get() = fonts.firstOrNull { it.state == FontState.Applied }
@@ -190,7 +196,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { current ->
                     current.copy(selectedFontSheet = first, selectedTab = MainTab.Available)
                 }
-                emitMessage("已添加到预览，确认后再安装")
+                emitMessage("已添加到预览，点击 Generate Fonts 安装字体包")
             } else {
                 emitMessage(errors.firstOrNull() ?: "没有可预览的字体文件")
             }
@@ -216,9 +222,10 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
     fun handleFontPrimaryAction(font: FontFamilyModel) {
         when (font.state) {
             FontState.Imported,
-            FontState.Generated,
-            FontState.Failed -> installSelectedFont(font)
-            FontState.SystemInstalled -> applySelectedFont(font)
+            FontState.Cached,
+            FontState.PackageGenerated,
+            FontState.Failed,
+            FontState.SystemInstalled -> installOrOpenSettings(font)
             FontState.Applied -> viewModelScope.launch { emitMessage("当前已应用该字体") }
             FontState.Generating,
             FontState.Installing,
@@ -227,76 +234,50 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun installSelectedFont(font: FontFamilyModel) {
-        viewModelScope.launch {
+    private fun installOrOpenSettings(font: FontFamilyModel) {
+        if (font.state == FontState.SystemInstalled) {
             val context = getApplication<Application>().applicationContext
-            val result = withContext(Dispatchers.IO) {
-                FontRepository.installFont(context, font)
-            }
-
-            when (result) {
-                is FontRepository.InstallResult.Success -> {
-                    refreshFonts()
-                    _uiState.update { current ->
-                        current.copy(
-                            selectedTab = MainTab.Installed,
-                            selectedFontSheet = result.font
-                        )
-                    }
-                    emitMessage(if (result.duplicate) "字体已安装，可应用" else "已安装，可应用")
-                }
-                is FontRepository.InstallResult.Failure -> emitMessage(result.message)
-            }
+            context.startActivity(SamsungFontVerifier().openSamsungFontSettingsIntent(context))
+            viewModelScope.launch { emitMessage("请在 Samsung 系统字体设置中选择该字体") }
+            return
         }
+        installSamsungFontPackage(font)
     }
 
-    private fun applySelectedFont(font: FontFamilyModel) {
+    private fun installSamsungFontPackage(font: FontFamilyModel) {
         viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
             val status = PrivilegeChecker.check(context)
             _uiState.update { current -> current.copy(privilegeStatus = status) }
 
-            val targetHash = font.files.firstOrNull()?.sha256
-            if (targetHash.isNullOrBlank()) {
-                emitMessage("字体文件不可用")
-                return@launch
-            }
-            if (!status.canApplySystemFont) {
-                emitMessage("Shizuku 未连接、未授权或 UID 不是 1000，不能应用")
+            val dryRun = FontApplyDryRun.run(context, font, status)
+            if (!dryRun.canProceedToApply) {
+                emitMessage("安装前检查失败：${dryRun.checks.joinToString(" / ")}")
                 return@launch
             }
 
-            val installedFile = FontRepository.findInstalledFile(context, targetHash)
-            val backend = SamsungFontPackageBackend(status)
+            val targetHash = font.files.firstOrNull()?.sha256.orEmpty()
+            val backend = SamsungFontPackageBackend(context, status)
             val plan = backend.createPlan(
                 fontFamily = font,
                 currentHash = FontRepository.readAppliedHash(context),
-                installedExists = installedFile != null
+                installedExists = FontRepository.findInstalledFile(context, targetHash) != null
             )
-
-            if (plan.alreadyApplied) {
-                emitMessage("当前已应用")
-                return@launch
-            }
-
-            val dryRun = FontApplyDryRun.run(context, font, status)
-            if (!dryRun.canProceedToApply) {
-                emitMessage("应用前检查失败：${dryRun.checks.joinToString(" / ")}")
-                return@launch
-            }
 
             val result = withContext(Dispatchers.IO) {
                 backend.apply(plan, font)
             }
-
             if (result.success) {
-                FontRepository.markApplied(context, targetHash)
+                val cached = withContext(Dispatchers.IO) { FontRepository.installFont(context, font) }
                 refreshFonts()
-                val applied = FontRepository.fontFamilies.value.firstOrNull { it.files.firstOrNull()?.sha256 == targetHash }
+                val updated = when (cached) {
+                    is FontRepository.InstallResult.Success -> cached.font
+                    is FontRepository.InstallResult.Failure -> null
+                }
                 _uiState.update { current ->
                     current.copy(
                         selectedTab = MainTab.Installed,
-                        selectedFontSheet = applied
+                        selectedFontSheet = updated ?: current.selectedFontSheet
                     )
                 }
             }

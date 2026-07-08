@@ -12,8 +12,8 @@ android {
         applicationId = "com.samfont"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10201
-        versionName = "1.2.1"
+        versionCode = 10300
+        versionName = "1.3.0"
     }
 
     flavorDimensions += "installMode"
@@ -49,6 +49,23 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDir(layout.buildDirectory.dir("generated/samfontTemplateAssets"))
+        }
+    }
+}
+
+val copyFontTemplateApk by tasks.registering(Copy::class) {
+    dependsOn(":fonttemplate:assembleDebug")
+    from(project(":fonttemplate").layout.buildDirectory.file("outputs/apk/debug/fonttemplate-debug.apk"))
+    into(layout.buildDirectory.dir("generated/samfontTemplateAssets/templates"))
+    rename { "samsung-font-template.apk" }
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(copyFontTemplateApk)
 }
 
 dependencies {
@@ -67,6 +84,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("com.android.tools.build:apksig:8.13.2")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

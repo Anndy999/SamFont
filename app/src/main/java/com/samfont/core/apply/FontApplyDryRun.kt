@@ -20,18 +20,18 @@ object FontApplyDryRun {
         val checks = mutableListOf<String>()
         val file = fontFamily.files.firstOrNull()?.let { File(it.path) }
         val targetValid = file?.let { it.exists() && FontRepository.isValidFontFile(it) } == true
-        val installed = fontFamily.files.firstOrNull()?.sha256?.let {
-            FontRepository.findInstalledFile(context, it) != null
-        } == true
         val shizuku = privilegeStatus.shizukuStatus
+        val shizukuUsable = shizuku?.available == true &&
+            shizuku.permissionGranted &&
+            (shizuku.uid == 1000 || shizuku.uid == 2000)
 
-        checks += "Shizuku UID1000: ${shizuku?.canOperateSystemFonts == true}"
-        checks += "目标字体已安装: $installed"
-        checks += "目标字体文件有效: $targetValid"
+        checks += "Shizuku usable: $shizukuUsable"
+        checks += "Shizuku uid: ${shizuku?.uid ?: "unknown"}"
+        checks += "Font file valid: $targetValid"
 
         return FontApplyDryRunReport(
             checks = checks,
-            canProceedToApply = privilegeStatus.canApplySystemFont && installed && targetValid
+            canProceedToApply = shizukuUsable && targetValid
         )
     }
 }

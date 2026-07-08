@@ -24,7 +24,7 @@ class StubFontApplyBackend : FontApplyBackend {
         )
     }
 
-    override fun apply(plan: FontApplyPlan, fontFamily: FontFamilyModel): FontApplyResult {
+    override suspend fun apply(plan: FontApplyPlan, fontFamily: FontFamilyModel): FontApplyResult {
         return FontApplyResult(
             success = false,
             message = "系统字体应用后端尚未接入，未执行系统修改。",

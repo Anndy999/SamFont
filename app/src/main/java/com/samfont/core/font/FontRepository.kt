@@ -33,20 +33,11 @@ object FontRepository {
     fun scanFonts(context: Context): List<FontFamilyModel> {
         ensureDirs(context)
         val appliedHash = readAppliedHash(context)
-        val installed = scanDir(installedDir(context), FontState.SystemInstalled, appliedHash)
+        val systemInstalled = scanDir(installedDir(context), FontState.SystemInstalled, appliedHash)
         val imported = scanDir(importedDir(context), FontState.Imported, appliedHash)
-
-        return (installed + imported)
+        return (systemInstalled + imported)
             .distinctBy { it.id }
             .sortedWith(compareBy<FontFamilyModel> { it.state.ordinal }.thenBy { it.displayName.lowercase() })
-    }
-
-    fun installedFonts(context: Context): List<FontFamilyModel> {
-        return scanFonts(context).filter { it.state == FontState.SystemInstalled || it.state == FontState.Applied }
-    }
-
-    fun importedFonts(context: Context): List<FontFamilyModel> {
-        return scanFonts(context).filter { it.state == FontState.Imported || it.state == FontState.Generated }
     }
 
     fun importFontFile(context: Context, source: File, displayName: String): ImportResult {
@@ -68,8 +59,7 @@ object FontRepository {
             return ImportResult.Failure("不是有效字体文件")
         }
 
-        val family = buildFamilies(normalized, FontState.Imported, readAppliedHash(context)).first()
-        return ImportResult.Success(family, duplicate = false)
+        return ImportResult.Success(buildFamilies(normalized, FontState.Imported, readAppliedHash(context)).first(), duplicate = false)
     }
 
     fun installFont(context: Context, font: FontFamilyModel): InstallResult {
@@ -98,9 +88,7 @@ object FontRepository {
         val file = appliedHashFile(context)
         file.parentFile?.mkdirs()
         val old = file.takeIf { it.exists() }?.readText()?.trim()
-        if (old != hash) {
-            atomicWrite(file, hash)
-        }
+        if (old != hash) atomicWrite(file, hash)
     }
 
     fun readAppliedHash(context: Context): String? {
@@ -113,7 +101,6 @@ object FontRepository {
         val header = ByteArray(4)
         val readCount = runCatching { file.inputStream().use { it.read(header) } }.getOrDefault(-1)
         if (readCount < 4) return null
-
         return when {
             header.contentEquals(byteArrayOf(0x00, 0x01, 0x00, 0x00)) -> "ttf"
             header.toAsciiString() == "true" -> "ttf"
@@ -135,7 +122,6 @@ object FontRepository {
         val detectedExtension = detectFontExtension(file) ?: return file
         val currentExtension = file.extension.lowercase().takeIf { it in supportedExtensions }
         if (currentExtension == detectedExtension) return file
-
         val normalized = uniqueFile(
             directory = file.parentFile ?: return file,
             baseName = file.nameWithoutExtension.ifBlank { "imported-font" },
@@ -184,9 +170,7 @@ object FontRepository {
             val variationInfo = OpenTypeVariationParser.parse(file, index)
             val previewAvailable = canPreviewFont(file, ttcIndex)
             val report = buildCompatibilityReport(file, fileType, variationInfo, previewAvailable, ttcIndex)
-            val displayName = metadata.fullName
-                ?: metadata.familyName
-                ?: file.nameWithoutExtension.ifBlank { file.name }
+            val displayName = metadata.fullName ?: metadata.familyName ?: file.nameWithoutExtension.ifBlank { file.name }
             val actualState = when {
                 !file.exists() -> FontState.Broken
                 hash == appliedHash && state == FontState.SystemInstalled -> FontState.Applied
@@ -230,7 +214,6 @@ object FontRepository {
         val cjk = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '字'.code, '高'.code), index)
         val simplified = OpenTypeCoverageParser.hasCodePoints(file, listOf('汉'.code, '简'.code, '体'.code), index)
         val traditional = OpenTypeCoverageParser.hasCodePoints(file, listOf('漢'.code, '繁'.code, '體'.code), index)
-
         return FontCompatibilityReport(
             fileType = fileType,
             isVariableFont = variationInfo?.isVariable == true,

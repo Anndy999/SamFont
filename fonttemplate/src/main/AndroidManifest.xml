@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="false"
+        android:hasCode="false"
+        android:label="SamFont Generated">
+        <meta-data
+            android:name="com.monotype.android.font"
+            android:value="true" />
+        <meta-data
+            android:name="com.samsung.android.font"
+            android:value="assets/xml/samfont.xml" />
+    </application>
+</manifest>
