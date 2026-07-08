@@ -22,7 +22,6 @@ class AndroidApkSigner(
             entry.privateKey,
             listOf(entry.certificate)
         )
-            .setMinSdkVersion(23)
             .build()
 
         ApkSigner.Builder(listOf(signerConfig))
