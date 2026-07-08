@@ -1,43 +1,42 @@
 package com.samfont.core.apply
 
 import com.samfont.core.font.FontFamilyModel
-import java.io.File
 
 class StubFontApplyBackend : FontApplyBackend {
     override fun getCurrentFont(): String = "Samsung Default"
-
-    override fun dryRun(fontFamily: FontFamilyModel): Boolean = true
 
     override fun createPlan(
         fontFamily: FontFamilyModel,
         currentHash: String?,
         installedExists: Boolean
     ): FontApplyPlan {
-        val sourceFiles = fontFamily.files.map { File(it.path) }
         val targetHash = fontFamily.files.firstOrNull()?.sha256.orEmpty()
+        val alreadyApplied = currentHash == targetHash && targetHash.isNotBlank()
 
         return FontApplyPlan(
             fontId = fontFamily.id,
-            sourceFiles = sourceFiles,
-            installedFiles = sourceFiles,
-            currentHash = currentHash,
             targetHash = targetHash,
+            alreadyApplied = alreadyApplied,
             needsCopy = !installedExists,
             needsPermissionFix = !installedExists,
-            needsConfigWrite = currentHash != targetHash,
-            needsCacheRefresh = currentHash != targetHash
+            needsConfigWrite = !alreadyApplied,
+            needsRefresh = !alreadyApplied
         )
     }
 
-    override fun applyPlan(plan: FontApplyPlan): Boolean {
-        // Stub 不执行真实系统操作；上层只根据 plan 判断是否需要继续。
-        return plan.noOp
+    override fun apply(plan: FontApplyPlan, fontFamily: FontFamilyModel): FontApplyResult {
+        return FontApplyResult(
+            success = false,
+            message = "系统字体应用后端尚未接入，未执行系统修改。",
+            backendLog = "Stub backend refused apply. fontId=${plan.fontId}, hash=${plan.targetHash}"
+        )
     }
 
-    override fun apply(fontFamily: FontFamilyModel): Boolean {
-        // 当前阶段只保留接口，不修改系统字体文件。
-        return false
+    override fun rollback(): FontApplyResult {
+        return FontApplyResult(
+            success = false,
+            message = "回滚后端尚未接入。",
+            backendLog = "Stub backend refused rollback."
+        )
     }
-
-    override fun rollback(): Boolean = true
 }

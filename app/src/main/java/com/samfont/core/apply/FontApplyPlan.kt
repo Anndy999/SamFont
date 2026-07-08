@@ -1,18 +1,20 @@
 package com.samfont.core.apply
 
-import java.io.File
-
 data class FontApplyPlan(
     val fontId: String,
-    val sourceFiles: List<File>,
-    val installedFiles: List<File>,
-    val currentHash: String?,
     val targetHash: String,
+    val alreadyApplied: Boolean,
     val needsCopy: Boolean,
     val needsPermissionFix: Boolean,
     val needsConfigWrite: Boolean,
-    val needsCacheRefresh: Boolean
+    val needsRefresh: Boolean
 ) {
     val noOp: Boolean
-        get() = !needsCopy && !needsPermissionFix && !needsConfigWrite && !needsCacheRefresh
+        get() = alreadyApplied || (!needsCopy && !needsPermissionFix && !needsConfigWrite && !needsRefresh)
 }
+
+data class FontApplyResult(
+    val success: Boolean,
+    val message: String,
+    val backendLog: String? = null
+)

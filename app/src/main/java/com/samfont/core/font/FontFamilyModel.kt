@@ -9,7 +9,7 @@ data class FontFamilyModel(
     val files: List<FontFileModel>,
     val supportedWeights: List<Int>,
     val isVariableFont: Boolean,
-    val installState: FontInstallState = FontInstallState.Imported,
+    val state: FontState = FontState.Imported,
     val fileType: String = "unknown",
     val previewAvailable: Boolean = false,
     val variationInfo: FontVariationInfo? = null,

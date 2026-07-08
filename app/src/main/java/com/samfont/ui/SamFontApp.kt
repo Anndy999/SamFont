@@ -14,11 +14,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
@@ -32,6 +33,11 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         viewModel.importFonts(context, uris)
+    }
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        viewModel.importFolder(context, uri)
     }
 
     LaunchedEffect(Unit) {
@@ -49,47 +55,39 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshPrivilege()
+                viewModel.refreshFonts()
             }
         }
-
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     BackHandler(enabled = uiState.screen is Screen.Detail) {
-        viewModel.goHome()
+        viewModel.goMain()
     }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            if (uiState.screen is Screen.Main) {
+                SamFontBottomBar(
+                    selectedTab = uiState.selectedTab,
+                    onSelectTab = viewModel::selectTab
+                )
+            }
+        }
     ) { padding ->
         when (val screen = uiState.screen) {
-            Screen.Home -> {
+            Screen.Main -> {
                 HomeScreen(
-                    modifier = androidx.compose.ui.Modifier.padding(padding),
+                    modifier = Modifier.padding(padding),
                     uiState = uiState,
                     onImportFonts = {
-                        importLauncher.launch(
-                            arrayOf(
-                                "font/ttf",
-                                "font/otf",
-                                "font/ttc",
-                                "font/sfnt",
-                                "font/collection",
-                                "application/font-sfnt",
-                                "application/x-font-ttf",
-                                "application/x-font-truetype",
-                                "application/x-font-otf",
-                                "application/x-font-opentype",
-                                "application/x-font-ttc",
-                                "application/vnd.ms-opentype",
-                                "application/octet-stream",
-                                "*/*"
-                            )
-                        )
+                        importLauncher.launch(fontMimeTypes())
+                    },
+                    onImportFolder = {
+                        folderLauncher.launch(null)
                     },
                     onRequestShizukuPermission = viewModel::requestShizukuPermission,
                     onCheckUpdate = viewModel::checkForUpdates,
@@ -97,16 +95,32 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
                     onOpenFont = viewModel::openFont
                 )
             }
-
             is Screen.Detail -> {
                 FontDetailScreen(
-                    modifier = androidx.compose.ui.Modifier.padding(padding),
+                    modifier = Modifier.padding(padding),
                     font = screen.font,
                     canApplySystemFont = uiState.privilegeStatus.canApplySystemFont,
-                    onBack = viewModel::goHome,
+                    onBack = viewModel::goMain,
                     onPrimaryAction = { viewModel.handleFontPrimaryAction(screen.font) }
                 )
             }
         }
     }
 }
+
+private fun fontMimeTypes(): Array<String> = arrayOf(
+    "font/ttf",
+    "font/otf",
+    "font/ttc",
+    "font/sfnt",
+    "font/collection",
+    "application/font-sfnt",
+    "application/x-font-ttf",
+    "application/x-font-truetype",
+    "application/x-font-otf",
+    "application/x-font-opentype",
+    "application/x-font-ttc",
+    "application/vnd.ms-opentype",
+    "application/octet-stream",
+    "*/*"
+)
