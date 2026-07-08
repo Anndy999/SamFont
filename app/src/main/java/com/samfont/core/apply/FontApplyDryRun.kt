@@ -23,10 +23,13 @@ object FontApplyDryRun {
         val shizuku = privilegeStatus.shizukuStatus
         val shizukuUsable = shizuku?.available == true &&
             shizuku.permissionGranted &&
-            (shizuku.uid == 1000 || shizuku.uid == 2000)
+            shizuku.uid == 1000
 
         checks += "Shizuku usable: $shizukuUsable"
+        checks += "Shizuku available: ${shizuku?.available ?: false}"
+        checks += "Shizuku permissionGranted: ${shizuku?.permissionGranted ?: false}"
         checks += "Shizuku uid: ${shizuku?.uid ?: "unknown"}"
+        checks += "Shizuku source: ${shizuku?.source ?: "unknown"}"
         checks += "Font file valid: $targetValid"
 
         return FontApplyDryRunReport(

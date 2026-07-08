@@ -39,14 +39,15 @@ class SamsungFontPackageBackend(
 
     override suspend fun apply(plan: FontApplyPlan, fontFamily: FontFamilyModel): FontApplyResult {
         val shizuku = privilegeStatus.shizukuStatus
+        val shizukuLog = buildShizukuLog()
         if (shizuku?.available != true) {
-            return FontApplyResult(false, "Shizuku 未运行，请先启动 Shizuku。", "status=$shizuku")
+            return FontApplyResult(false, "Shizuku 未运行，请先启动 Shizuku。", shizukuLog)
         }
         if (!shizuku.permissionGranted) {
-            return FontApplyResult(false, "Shizuku 未授权，无法安装字体包。", "status=$shizuku")
+            return FontApplyResult(false, "Shizuku 未授权，无法安装字体包。", shizukuLog)
         }
-        if (shizuku.uid != 1000 && shizuku.uid != 2000) {
-            return FontApplyResult(false, "Shizuku UID=${shizuku.uid}，不允许安装字体包。", "status=$shizuku")
+        if (shizuku.uid != 1000) {
+            return FontApplyResult(false, "需要 Shizuku UID1000 权限才能安装 Samsung 字体包。", shizukuLog)
         }
 
         val fontFileModel = fontFamily.files.firstOrNull()
@@ -64,7 +65,7 @@ class SamsungFontPackageBackend(
             return FontApplyResult(
                 success = false,
                 message = "Shizuku shell 无法执行 pm 命令。",
-                backendLog = formatShellCheck(shellCheck.command, shellCheck.exitCode, shellCheck.stdout, shellCheck.stderr)
+                backendLog = shizukuLog + "\n" + formatShellCheck(shellCheck.command, shellCheck.exitCode, shellCheck.stdout, shellCheck.stderr)
             )
         }
 
@@ -75,7 +76,7 @@ class SamsungFontPackageBackend(
                 return FontApplyResult(
                     success = false,
                     message = install.message,
-                    backendLog = generated.log + "\n" + install.log
+                    backendLog = shizukuLog + "\n" + generated.log + "\n" + install.log
                 )
             }
 
@@ -84,7 +85,7 @@ class SamsungFontPackageBackend(
                 return FontApplyResult(
                     success = false,
                     message = verification.message,
-                    backendLog = generated.log + "\n" + install.log + "\n" + verification.log
+                    backendLog = shizukuLog + "\n" + generated.log + "\n" + install.log + "\n" + verification.log
                 )
             }
 
@@ -92,6 +93,7 @@ class SamsungFontPackageBackend(
                 success = true,
                 message = "字体包已安装，请在 Samsung 系统字体设置中选择该字体。",
                 backendLog = buildString {
+                    appendLine(shizukuLog)
                     appendLine(generated.log)
                     appendLine(install.log)
                     appendLine(verification.log)
@@ -103,7 +105,7 @@ class SamsungFontPackageBackend(
             FontApplyResult(
                 success = false,
                 message = "字体包生成失败，请查看诊断日志。",
-                backendLog = throwable.stackTraceToString()
+                backendLog = shizukuLog + "\n" + throwable.stackTraceToString()
             )
         }
     }
@@ -118,6 +120,16 @@ class SamsungFontPackageBackend(
             appendLine("exitCode=$exitCode")
             if (stdout.isNotBlank()) appendLine("stdout:\n$stdout")
             if (stderr.isNotBlank()) appendLine("stderr:\n$stderr")
+        }
+    }
+
+    private fun buildShizukuLog(): String {
+        val shizuku = privilegeStatus.shizukuStatus
+        return buildString {
+            appendLine("Shizuku available=${shizuku?.available ?: false}")
+            appendLine("Shizuku permissionGranted=${shizuku?.permissionGranted ?: false}")
+            appendLine("Shizuku uid=${shizuku?.uid ?: "unknown"}")
+            appendLine("Shizuku source=${shizuku?.source ?: "unknown"}")
         }
     }
 }

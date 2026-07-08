@@ -72,27 +72,46 @@ object ShizukuBridge {
         }
     }
 
-    fun runShell(command: String): ShellResult {
-        return runRemoteProcess(command, null)
+    fun runShell(command: String, timeoutSeconds: Long = 60): ShellResult {
+        return runRemoteProcess(command, null, timeoutSeconds)
     }
 
-    fun runShell(commands: List<String>): ShellResult {
-        return runShell(commands.joinToString("\n"))
+    fun runShell(commands: List<String>, timeoutSeconds: Long = 60): ShellResult {
+        return runShell(commands.joinToString("\n"), timeoutSeconds)
     }
 
-    fun writeFileToRemoteTemp(localFile: File, remotePath: String): ShellResult {
-        val write = runRemoteProcess("cat > ${shellQuote(remotePath)}", localFile)
+    fun writeFileToRemoteTemp(
+        localFile: File,
+        remotePath: String,
+        timeoutSeconds: Long = 300
+    ): ShellResult {
+        val write = runRemoteProcess("cat > ${shellQuote(remotePath)}", localFile, timeoutSeconds)
         if (!write.success) return write
-        val chmod = runShell("chmod 644 ${shellQuote(remotePath)}")
+        val chmod = runShell("chmod 644 ${shellQuote(remotePath)}", timeoutSeconds)
         return ShellResult(
             exitCode = chmod.exitCode,
-            stdout = write.stdout + chmod.stdout,
-            stderr = write.stderr + chmod.stderr,
-            command = "write ${localFile.absolutePath} -> $remotePath\n${chmod.command}"
+            stdout = buildString {
+                appendLine("write.exitCode=${write.exitCode}")
+                if (write.stdout.isNotBlank()) appendLine("write.stdout:\n${write.stdout.trim()}")
+                appendLine("chmod.exitCode=${chmod.exitCode}")
+                if (chmod.stdout.isNotBlank()) appendLine("chmod.stdout:\n${chmod.stdout.trim()}")
+            },
+            stderr = buildString {
+                if (write.stderr.isNotBlank()) appendLine("write.stderr:\n${write.stderr.trim()}")
+                if (chmod.stderr.isNotBlank()) appendLine("chmod.stderr:\n${chmod.stderr.trim()}")
+            },
+            command = buildString {
+                appendLine(write.command)
+                append(chmod.command)
+            }
         )
     }
 
-    private fun runRemoteProcess(command: String, stdinFile: File?): ShellResult {
+    private fun runRemoteProcess(
+        command: String,
+        stdinFile: File?,
+        timeoutSeconds: Long
+    ): ShellResult {
         if (!pingBinder()) {
             return ShellResult(-1, "", "Shizuku 未运行", command)
         }
@@ -113,7 +132,7 @@ object ShizukuBridge {
                 stdinFile?.inputStream()?.use { input -> input.copyTo(output) }
             }
 
-            val finished = process.waitFor(60, TimeUnit.SECONDS)
+            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroy()
                 return ShellResult(-1, stdout.toString(), "命令超时", command)

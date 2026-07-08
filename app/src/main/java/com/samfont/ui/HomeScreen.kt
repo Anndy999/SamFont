@@ -31,6 +31,7 @@ fun HomeScreen(
     onRequestShizukuPermission: () -> Unit,
     onCheckUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
+    onCopyInstallLog: () -> Unit,
     onOpenFont: (FontFamilyModel) -> Unit
 ) {
     LazyColumn(
@@ -112,7 +113,8 @@ fun HomeScreen(
                         uiState = uiState,
                         onRequestShizukuPermission = onRequestShizukuPermission,
                         onCheckUpdate = onCheckUpdate,
-                        onInstallUpdate = onInstallUpdate
+                        onInstallUpdate = onInstallUpdate,
+                        onCopyInstallLog = onCopyInstallLog
                     )
                 }
             }
@@ -252,7 +254,8 @@ private fun AboutPanel(
     uiState: SamFontUiState,
     onRequestShizukuPermission: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onInstallUpdate: () -> Unit
+    onInstallUpdate: () -> Unit,
+    onCopyInstallLog: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PrivilegeStatusCard(status = uiState.privilegeStatus)
@@ -264,6 +267,13 @@ private fun AboutPanel(
         )
         Button(modifier = Modifier.fillMaxWidth(), onClick = onRequestShizukuPermission) {
             Text(text = "Request Shizuku Permission")
+        }
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = uiState.latestBackendLog.isNotBlank(),
+            onClick = onCopyInstallLog
+        ) {
+            Text(text = "Copy Install Log")
         }
     }
 }

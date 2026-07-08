@@ -26,7 +26,7 @@ class SamsungFontVerifier {
         append(log, dumpsys.command, dumpsys.exitCode, dumpsys.stdout, dumpsys.stderr)
 
         val installed = list.success && list.stdout.lineSequence().any { it.trim() == "package:$packageName" } &&
-            path.success && path.stdout.contains("package:")
+            path.success && path.stdout.lineSequence().any { it.trim().startsWith("package:/data/app/") }
 
         VerificationResult(
             installed = installed,

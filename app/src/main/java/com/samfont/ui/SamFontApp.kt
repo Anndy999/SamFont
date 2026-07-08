@@ -91,6 +91,7 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
             onRequestShizukuPermission = viewModel::requestShizukuPermission,
             onCheckUpdate = viewModel::checkForUpdates,
             onInstallUpdate = { viewModel.installUpdate(context) },
+            onCopyInstallLog = { viewModel.copyInstallLog(context) },
             onOpenFont = viewModel::openFont
         )
 

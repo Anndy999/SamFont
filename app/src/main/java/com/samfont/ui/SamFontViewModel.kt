@@ -1,6 +1,8 @@
 package com.samfont.ui
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -46,7 +48,8 @@ data class SamFontUiState(
     val selectedTab: MainTab,
     val selectedFontSheet: FontFamilyModel?,
     val updateState: UpdateState,
-    val currentVersionName: String
+    val currentVersionName: String,
+    val latestBackendLog: String
 ) {
     val installedFonts: List<FontFamilyModel>
         get() = fonts.filter { it.state == FontState.SystemInstalled || it.state == FontState.Applied }
@@ -76,7 +79,8 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             selectedTab = MainTab.Installed,
             selectedFontSheet = null,
             updateState = UpdateState.Idle,
-            currentVersionName = BuildConfig.VERSION_NAME
+            currentVersionName = BuildConfig.VERSION_NAME,
+            latestBackendLog = ""
         )
     )
     val uiState: StateFlow<SamFontUiState> = _uiState.asStateFlow()
@@ -119,6 +123,17 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch { emitMessage(it.message ?: "Shizuku 权限请求失败") }
         }
         refreshPrivilege()
+    }
+
+    fun copyInstallLog(context: Context) {
+        val log = _uiState.value.latestBackendLog
+        if (log.isBlank()) {
+            viewModelScope.launch { emitMessage("暂无安装日志") }
+            return
+        }
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("SamFont install log", log))
+        viewModelScope.launch { emitMessage("安装日志已复制") }
     }
 
     fun checkForUpdates() {
@@ -250,8 +265,30 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             val status = PrivilegeChecker.check(context)
             _uiState.update { current -> current.copy(privilegeStatus = status) }
 
+            val shizuku = status.shizukuStatus
+            val shizukuLog = buildString {
+                appendLine("Shizuku available=${shizuku?.available ?: false}")
+                appendLine("Shizuku permissionGranted=${shizuku?.permissionGranted ?: false}")
+                appendLine("Shizuku uid=${shizuku?.uid ?: "unknown"}")
+                appendLine("Shizuku source=${shizuku?.source ?: "unknown"}")
+            }
+            val privilegeError = when {
+                shizuku?.available != true -> "Shizuku 未运行，请先启动 Shizuku。"
+                !shizuku.permissionGranted -> "Shizuku 未授权，无法安装字体包。"
+                shizuku.uid != 1000 -> "需要 Shizuku UID1000 权限才能安装 Samsung 字体包。"
+                else -> null
+            }
+            if (privilegeError != null) {
+                _uiState.update { current -> current.copy(latestBackendLog = shizukuLog) }
+                emitMessage(privilegeError)
+                return@launch
+            }
+
             val dryRun = FontApplyDryRun.run(context, font, status)
             if (!dryRun.canProceedToApply) {
+                _uiState.update { current ->
+                    current.copy(latestBackendLog = dryRun.checks.joinToString("\n"))
+                }
                 emitMessage("安装前检查失败：${dryRun.checks.joinToString(" / ")}")
                 return@launch
             }
@@ -267,6 +304,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             val result = withContext(Dispatchers.IO) {
                 backend.apply(plan, font)
             }
+            _uiState.update { current -> current.copy(latestBackendLog = result.backendLog.orEmpty()) }
             if (result.success) {
                 val cached = withContext(Dispatchers.IO) { FontRepository.installFont(context, font) }
                 refreshFonts()
@@ -281,7 +319,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             }
-            emitMessage(result.message)
+            emitMessage(if (result.success) result.message else "字体包安装失败，点击查看日志")
         }
     }
 

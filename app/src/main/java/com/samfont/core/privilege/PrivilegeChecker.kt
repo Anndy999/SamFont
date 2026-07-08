@@ -56,24 +56,18 @@ object PrivilegeChecker {
         val selected = matchedAppUid ?: candidates.first()
         val appId = getAppIdCompat(selected.uid)
         val isAppUid1000 = matchedAppUid != null
-        val shizukuCanOperate = shizukuStatus.canOperateSystemFonts
+        val shizukuCanOperate = shizukuStatus.available &&
+            shizukuStatus.permissionGranted &&
+            shizukuStatus.uid == Process.SYSTEM_UID
 
-        return if (isAppUid1000 || shizukuCanOperate) {
+        return if (shizukuCanOperate) {
             PrivilegeStatus(
                 uid = selected.uid,
                 appId = appId,
                 isUid1000 = isAppUid1000,
                 canApplySystemFont = true,
-                title = if (shizukuCanOperate && !isAppUid1000) {
-                    "Shizuku UID1000 已启用"
-                } else {
-                    "UID1000 权限已启用"
-                },
-                message = if (shizukuCanOperate && !isAppUid1000) {
-                    "Shizuku server 支持系统字体操作"
-                } else {
-                    "当前环境支持系统字体应用"
-                },
+                title = "Shizuku UID1000 已启用",
+                message = "Shizuku server 支持 Samsung 字体包安装",
                 installMode = BuildConfig.INSTALL_MODE,
                 processUid = processUid,
                 osUid = osUid,
@@ -85,7 +79,7 @@ object PrivilegeChecker {
                 selinuxContext = selinuxContext,
                 shizukuStatus = shizukuStatus,
                 diagnostics = diagnostics,
-                detectionSource = if (shizukuCanOperate && !isAppUid1000) "Shizuku.getUid()" else selected.source
+                detectionSource = "Shizuku.getUid()"
             )
         } else {
             PrivilegeStatus(
