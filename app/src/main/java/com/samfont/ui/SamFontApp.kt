@@ -3,16 +3,17 @@ package com.samfont.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +21,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -30,7 +32,6 @@ import com.samfont.theme.SamFontColors
 import com.samfont.theme.SamFontDimens
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -103,23 +104,26 @@ fun SamFontApp(viewModel: SamFontViewModel = viewModel()) {
         )
 
         uiState.selectedFontSheet?.let { font ->
-            ModalBottomSheet(
+            Dialog(
                 onDismissRequest = viewModel::dismissFontSheet,
-                containerColor = MaterialTheme.colorScheme.surface,
-                scrimColor = SamFontColors.Scrim,
-                shape = RoundedCornerShape(
-                    topStart = SamFontDimens.SheetRadius,
-                    topEnd = SamFontDimens.SheetRadius
-                )
+                properties = DialogProperties(usePlatformDefaultWidth = false)
             ) {
-                FontActionSheet(
-                    font = font,
-                    canApplySystemFont = uiState.privilegeStatus.canApplySystemFont,
-                    applyMode = uiState.applyMode,
-                    onApplyModeChange = viewModel::setApplyMode,
-                    onCancel = viewModel::dismissFontSheet,
-                    onPrimaryAction = { viewModel.handleFontPrimaryAction(font) }
-                )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .fillMaxHeight(0.88f),
+                    shape = RoundedCornerShape(SamFontDimens.SheetRadius),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    FontActionSheet(
+                        font = font,
+                        canApplySystemFont = uiState.privilegeStatus.canApplySystemFont,
+                        applyMode = uiState.applyMode,
+                        onApplyModeChange = viewModel::setApplyMode,
+                        onCancel = viewModel::dismissFontSheet,
+                        onPrimaryAction = { viewModel.handleFontPrimaryAction(font) }
+                    )
+                }
             }
         }
     }

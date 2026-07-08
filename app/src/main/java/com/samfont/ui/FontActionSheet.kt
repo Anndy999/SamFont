@@ -1,6 +1,7 @@
 ﻿package com.samfont.ui
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +42,7 @@ import java.io.File
 
 @Composable
 fun FontActionSheet(
+    modifier: Modifier = Modifier,
     font: FontFamilyModel,
     canApplySystemFont: Boolean,
     applyMode: SamsungFontApplyMode,
@@ -90,8 +92,9 @@ fun FontActionSheet(
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -231,8 +234,8 @@ private fun AxisControls(
     onAxisValueChange: (String, Float) -> Unit,
     onReset: () -> Unit
 ) {
-    val standardAxes = axes.filter { it.standard }
-    val customAxes = axes.filterNot { it.standard }
+    val standardAxes = axes.filter { it.standard && it.tag != "wght" }
+    val customAxes = axes.filterNot { it.standard }.filter { it.tag != "wght" }
     standardAxes.forEach { axis ->
         AxisSlider(axis, axisValues[axis.tag] ?: axis.defaultValue, onAxisValueChange)
     }
