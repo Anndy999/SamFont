@@ -19,21 +19,22 @@ class SamsungFontApkGeneratorTest {
 
         createZip(template, mapOf("AndroidManifest.xml" to "manifest", "assets/xml/samfont.xml" to "old"))
         font.writeBytes(byteArrayOf(0x00, 0x01, 0x00, 0x00, 1, 2, 3, 4))
+        val spec = SamsungFontPackageSpec.create("My Font")
 
         SamsungFontApkGenerator.rewriteTemplateApk(
             templateApk = template,
             outputApk = output,
             fontFile = font,
-            fontEntryName = "assets/fonts/SamFont.ttf",
-            xmlEntryName = "assets/xml/samfont.xml",
-            xml = SamsungFontXmlBuilder.build(SamsungFontPackageSpec.create("测试字体", "ttf"))
+            spec = spec,
+            xml = SamsungFontXmlBuilder.build(spec)
         )
 
         assertTrue(output.exists())
         assertTrue(output.length() > 0)
         ZipFile(output).use { zip ->
-            assertTrue(zip.getEntry("assets/fonts/SamFont.ttf") != null)
-            assertTrue(zip.getEntry("assets/xml/samfont.xml") != null)
+            assertTrue(zip.getEntry("assets/fonts/my_font.ttf") != null)
+            assertTrue(zip.getEntry("assets/fonts/my_font-Bold.ttf") != null)
+            assertTrue(zip.getEntry("assets/xml/my_font.xml") != null)
         }
     }
 
@@ -47,14 +48,14 @@ class SamsungFontApkGeneratorTest {
 
         createZipWithResources(template)
         font.writeBytes(byteArrayOf(0x00, 0x01, 0x00, 0x00, 1, 2, 3, 4))
+        val spec = SamsungFontPackageSpec.create("My Font")
 
         SamsungFontApkGenerator.rewriteTemplateApk(
             templateApk = template,
             outputApk = unsigned,
             fontFile = font,
-            fontEntryName = "assets/fonts/SamFont.ttf",
-            xmlEntryName = "assets/xml/samfont.xml",
-            xml = SamsungFontXmlBuilder.build(SamsungFontPackageSpec.create("测试字体", "ttf"))
+            spec = spec,
+            xml = SamsungFontXmlBuilder.build(spec)
         )
 
         ZipAligner.align(unsigned, aligned)

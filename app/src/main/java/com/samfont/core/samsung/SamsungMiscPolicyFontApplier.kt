@@ -3,6 +3,12 @@ package com.samfont.core.samsung
 import com.samfont.core.shizuku.ShellResult
 import com.samfont.core.shizuku.ShizukuBridge
 
+data class AutoApplyResult(
+    val applied: Boolean,
+    val message: String,
+    val log: String
+)
+
 class SamsungMiscPolicyFontApplier {
     fun hasMiscPolicy(): AutoApplyResult {
         val result = ShizukuBridge.runShell("/system/bin/service list | /system/bin/grep misc_policy", timeoutSeconds = 60)
@@ -17,81 +23,76 @@ class SamsungMiscPolicyFontApplier {
         )
     }
 
+    fun applyFontShell(fontName: String): AutoApplyResult {
+        val log = StringBuilder()
+        val support = hasMiscPolicy()
+        log.appendLine(support.log)
+        if (!support.applied) {
+            return AutoApplyResult(false, "misc_policy not supported", log.toString())
+        }
+
+        val apply = ShizukuBridge.runShell(
+            "/system/bin/service call misc_policy 5 i32 0 s16 ${ShizukuBridge.shellQuote(fontName)} i32 0",
+            timeoutSeconds = 60
+        )
+        log.appendLine(formatResult(apply))
+        if (!apply.success || apply.stdout.hasFailureMarker() || apply.stderr.hasFailureMarker()) {
+            return AutoApplyResult(false, "Installed but not applied", log.toString())
+        }
+
+        repeat(6) { attempt ->
+            Thread.sleep((attempt + 1) * 250L)
+            val current = readCurrentFontRaw()
+            val activeName = parseParcelString(current.stdout)
+            log.appendLine(formatResult(current))
+            log.appendLine("expectedName=$fontName")
+            log.appendLine("activeName=${activeName ?: "null"}")
+            if (fontNamesMatch(activeName, fontName)) {
+                return AutoApplyResult(true, "Applied", log.toString())
+            }
+        }
+
+        return AutoApplyResult(false, "Installed but not applied", log.toString())
+    }
+
     fun readCurrentFontRaw(): ShellResult {
         return ShizukuBridge.runShell("/system/bin/service call misc_policy 6", timeoutSeconds = 60)
     }
 
-    fun applyFont(fontName: String): ShellResult {
-        // misc_policy 实际读取/返回的是 Samsung 字体 XML 中的 droidname/internal name。
-        return ShizukuBridge.runShell(
-            "/system/bin/service call misc_policy 5 i32 0 s16 ${ShizukuBridge.shellQuote(fontName)} i32 0",
-            timeoutSeconds = 60
-        )
-    }
-
-    fun applyAndVerify(
-        generatedPackage: SamsungFontGeneratedPackage,
-        mode: SamsungFontApplyMode
-    ): AutoApplyResult {
-        val log = StringBuilder()
-        log.appendLine("Font display name: ${generatedPackage.displayName}")
-        log.appendLine("Font droid name: ${generatedPackage.spec.droidName}")
-        log.appendLine("Font package name: ${generatedPackage.packageName}")
-        log.appendLine("Font apply mode: ${mode.label}")
-        val support = hasMiscPolicy()
-        log.appendLine(support.log)
-        if (!support.applied) {
-            return AutoApplyResult(
-                applied = false,
-                message = "misc_policy not supported",
-                log = log.toString()
-            )
-        }
-
-        val candidates = applyCandidates(generatedPackage, mode)
-        candidates.forEach { candidate ->
-            log.appendLine("Trying misc_policy font value: $candidate")
-            val apply = applyFont(candidate)
-            log.appendLine(formatResult(apply))
-            if (apply.success) {
-                Thread.sleep(800)
-                val current = readCurrentFontRaw()
-                log.appendLine(formatResult(current))
-                if (current.success && current.stdout.contains(candidate)) {
-                    return AutoApplyResult(
-                        applied = true,
-                        message = "Applied",
-                        log = log.toString()
-                    )
-                }
+    fun parseParcelString(raw: String): String? {
+        val words = raw.lineSequence()
+            .flatMap { line ->
+                val payload = if (line.contains(':')) line.substringAfter(':') else line
+                Regex("""\b[0-9a-fA-F]{8}\b""").findAll(payload).map { it.value.toLong(16) }
             }
-        }
+            .toList()
+        if (words.size < 3) return null
+        val length = words.getOrNull(1)?.toInt() ?: return null
+        if (length <= 0 || length > 512) return null
 
-        return AutoApplyResult(
-            applied = false,
-            message = "Installed but not applied: Verification failed",
-            log = log.toString()
-        )
+        val chars = StringBuilder()
+        words.drop(2).forEach { word ->
+            val low = (word and 0xffff).toInt()
+            val high = ((word shr 16) and 0xffff).toInt()
+            if (low != 0 && chars.length < length) chars.append(low.toChar())
+            if (high != 0 && chars.length < length) chars.append(high.toChar())
+        }
+        return chars.toString().takeIf { it.isNotBlank() }
     }
 
-    private fun applyCandidates(
-        generatedPackage: SamsungFontGeneratedPackage,
-        mode: SamsungFontApplyMode
-    ): List<String> {
-        val fileNameWithoutExtension = generatedPackage.spec.fontFileName.substringBeforeLast('.')
-        val candidates = when (mode) {
-            SamsungFontApplyMode.Auto -> listOf(
-                generatedPackage.spec.droidName,
-                generatedPackage.displayName,
-                generatedPackage.packageName,
-                fileNameWithoutExtension
-            )
-            SamsungFontApplyMode.DroidName -> listOf(generatedPackage.spec.droidName)
-            SamsungFontApplyMode.DisplayName -> listOf(generatedPackage.displayName)
-            SamsungFontApplyMode.PackageName -> listOf(generatedPackage.packageName)
-            SamsungFontApplyMode.FileName -> listOf(fileNameWithoutExtension)
-        }
-        return candidates.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    fun fontNamesMatch(active: String?, expected: String): Boolean {
+        if (active == null) return false
+        return normalize(active) == normalize(expected)
+    }
+
+    private fun normalize(value: String): String {
+        return value.trim().lowercase().replace('-', '_')
+    }
+
+    private fun String.hasFailureMarker(): Boolean {
+        return contains("fffffffe", ignoreCase = true) ||
+            contains("Exception", ignoreCase = true) ||
+            contains("error", ignoreCase = true)
     }
 
     private fun formatResult(result: ShellResult): String {

@@ -8,30 +8,24 @@ import org.junit.Test
 class SamsungFontXmlBuilderTest {
     @Test
     fun displayNameIsEscaped() {
-        val spec = SamsungFontPackageSpec(
-            packageName = SamsungFontPackageSpec.FIXED_PACKAGE_NAME,
-            displayName = "中文 <Font> & \"Name\"",
-            droidName = "SamFont_test",
-            fontFileName = "SamFont.ttf",
-            fontXmlName = "samfont.xml",
-            versionCode = 1,
-            versionName = "1.0"
-        )
+        val spec = SamsungFontPackageSpec.create("中文 <Font> & \"Name\"")
 
         val xml = SamsungFontXmlBuilder.build(spec)
 
-        assertTrue(xml.contains("中文 &lt;Font&gt; &amp; &quot;Name&quot;"))
-        assertTrue(xml.contains("<filename>SamFont.ttf</filename>"))
-        assertTrue(xml.contains("<droidname>SamFont_test</droidname>"))
+        assertTrue(xml.contains("Font_Name"))
+        assertTrue(xml.contains("<filename>font_name.ttf</filename>"))
+        assertTrue(xml.contains("<filename>font_name-Bold.ttf</filename>"))
+        assertTrue(xml.contains("<droidname>DroidSans.ttf</droidname>"))
+        assertTrue(xml.contains("<droidname>DroidSans-Bold.ttf</droidname>"))
         assertFalse(xml.contains("displayname=\"中文 <Font>"))
     }
 
     @Test
-    fun generatedPackageNameKeepsTemplateLengthAndDroidName() {
-        val spec = SamsungFontPackageSpec.create("HarmonyOS Sans", "ttf", "62ae1dd2ce8f")
+    fun generatedPackageNameUsesAssetBase() {
+        val spec = SamsungFontPackageSpec.create("HarmonyOS Sans Italic Medium")
 
-        assertEquals(SamsungFontPackageSpec.FIXED_PACKAGE_NAME.length, spec.packageName.length)
-        assertTrue(spec.packageName.endsWith(".f62ae1dd2"))
-        assertEquals("SamFont_f62ae1dd2", spec.droidName)
+        assertEquals("HarmonyOS_Sans_Italic_Medium", spec.displayName)
+        assertEquals("harmonyos_sans_italic_medium", spec.assetBase)
+        assertEquals("com.monotype.android.font.harmonyos_sans_italic_medium", spec.packageName)
     }
 }

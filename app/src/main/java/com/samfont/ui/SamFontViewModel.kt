@@ -17,7 +17,6 @@ import com.samfont.core.font.FontRepository
 import com.samfont.core.font.FontState
 import com.samfont.core.privilege.PrivilegeChecker
 import com.samfont.core.privilege.PrivilegeStatus
-import com.samfont.core.samsung.SamsungFontApplyMode
 import com.samfont.core.shizuku.ShizukuBridge
 import com.samfont.core.update.UpdateInstaller
 import com.samfont.core.update.UpdateRepository
@@ -49,8 +48,7 @@ data class SamFontUiState(
     val selectedFontSheet: FontFamilyModel?,
     val updateState: UpdateState,
     val currentVersionName: String,
-    val latestBackendLog: String,
-    val applyMode: SamsungFontApplyMode
+    val latestBackendLog: String
 ) {
     val installedFonts: List<FontFamilyModel>
         get() = fonts.filter { it.state == FontState.SystemInstalled || it.state == FontState.Applied }
@@ -90,8 +88,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             selectedFontSheet = null,
             updateState = UpdateState.Idle,
             currentVersionName = BuildConfig.VERSION_NAME,
-            latestBackendLog = "",
-            applyMode = SamsungFontApplyMode.Auto
+            latestBackendLog = ""
         )
     )
     val uiState: StateFlow<SamFontUiState> = _uiState.asStateFlow()
@@ -161,10 +158,6 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
 
     fun dismissFontSheet() {
         _uiState.update { current -> current.copy(selectedFontSheet = null) }
-    }
-
-    fun setApplyMode(mode: SamsungFontApplyMode) {
-        _uiState.update { current -> current.copy(applyMode = mode) }
     }
 
     fun installUpdate(context: Context) {
@@ -299,11 +292,7 @@ class SamFontViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val targetHash = font.files.firstOrNull()?.sha256.orEmpty()
-            val backend = SamsungFontPackageBackend(
-                context = context,
-                privilegeStatus = status,
-                applyMode = _uiState.value.applyMode
-            )
+            val backend = SamsungFontPackageBackend(context, status)
             val plan = backend.createPlan(
                 fontFamily = font,
                 currentHash = FontRepository.readAppliedHash(context),

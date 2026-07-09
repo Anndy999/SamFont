@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -35,7 +34,6 @@ import com.samfont.core.font.FontFamilyModel
 import com.samfont.core.font.FontState
 import com.samfont.core.font.variation.FontVariationAxis
 import com.samfont.core.preview.FontPreviewEngine
-import com.samfont.core.samsung.SamsungFontApplyMode
 import com.samfont.theme.SamFontColors
 import com.samfont.theme.SamFontDimens
 import java.io.File
@@ -45,8 +43,6 @@ fun FontActionSheet(
     modifier: Modifier = Modifier,
     font: FontFamilyModel,
     canApplySystemFont: Boolean,
-    applyMode: SamsungFontApplyMode,
-    onApplyModeChange: (SamsungFontApplyMode) -> Unit,
     onCancel: () -> Unit,
     onPrimaryAction: () -> Unit
 ) {
@@ -196,21 +192,6 @@ fun FontActionSheet(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
-
-        Text(text = "Apply option", style = MaterialTheme.typography.titleMedium)
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SamsungFontApplyMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = applyMode == mode,
-                    onClick = { onApplyModeChange(mode) },
-                    label = { Text(text = mode.label) }
-                )
-            }
-        }
-
         HorizontalDivider(color = SamFontColors.Divider)
 
         OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onCancel) {
